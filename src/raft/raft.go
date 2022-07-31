@@ -21,6 +21,7 @@ import (
 	//	"bytes"
 
 	//"fmt"
+
 	"math/rand"
 	"strconv"
 	"sync"
@@ -59,6 +60,10 @@ type ApplyMsg struct {
 	SnapshotTerm  int
 	SnapshotIndex int
 }
+type LogEntry struct {
+	Term    int
+	Command interface{}
+}
 
 //
 // A Go object implementing a single Raft peer.
@@ -78,6 +83,14 @@ type Raft struct {
 	state       int
 	timeout     time.Time
 	leader      int
+
+	log         []LogEntry
+	commitindex int
+	lastApplied int
+	nextindex   []int
+	matchindex  []int
+
+	applyChan chan ApplyMsg
 }
 
 // return currentTerm and whether this server
@@ -158,6 +171,9 @@ type RequestVoteArgs struct {
 	Term int
 	// Your data here (2A, 2B).
 	CandidateId int
+
+	LastLogIndex int
+	LastLogTerm  int
 }
 
 //
@@ -189,7 +205,10 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if rf.votedFor != -1 || rf.state == Leader {
 		reply.VoteGranted = false
 	} else {
-
+		if rf.log[len(rf.log)-1].Term > args.LastLogTerm || rf.log[len(rf.log)-1].Term == args.LastLogTerm && (len(rf.log)-1 > args.LastLogIndex) {
+			reply.VoteGranted = false
+			return
+		}
 		reply.VoteGranted = true
 		rf.votedFor = args.CandidateId
 	}
@@ -266,6 +285,21 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 
 	// Your code here (2B).
 
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if rf.killed() == true {
+		return -1, -1, false
+	}
+	if rf.state != Leader {
+		return -1, -1, false
+	} else {
+
+		rf.log = append(rf.log, LogEntry{Term: rf.currentTerm, Command: command})
+		index := len(rf.log) - 1
+		term := rf.currentTerm
+		rf.persist()
+		return index, term, true
+	}
 	return index, term, isLeader
 }
 
@@ -293,18 +327,36 @@ func (rf *Raft) killed() bool {
 // The ticker go routine starts a new election if this peer hasn't received
 // heartsbeats recently.
 func (rf *Raft) ticker() {
+
 	for rf.killed() == false {
+		//fmt.Println(rf.me)
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
 		// time.Sleep().
 		if rf.state == Leader {
+			//fmt.Println(rf.me, "领导者在纪元:", rf.currentTerm, "日志状态:", rf.log)
+			rf.mu.Lock()
 			rf.Heartbeats()
+			rf.mu.Unlock()
 		} else {
+			//fmt.Println(rf.me, "跟随者在纪元:", rf.currentTerm, "日志状态:", rf.log)
 			if time.Now().After(rf.timeout) {
 				rf.Xuanju()
 			}
 		}
-		time.Sleep(time.Second / 100)
+		time.Sleep(time.Second / 20)
+	}
+}
+func (rf *Raft) appendticker() {
+	for rf.killed() == false {
+		time.Sleep(50 * time.Millisecond)
+		rf.mu.Lock()
+		if rf.state == Leader {
+			rf.leaderappend()
+			rf.mu.Unlock()
+		} else {
+			rf.mu.Unlock()
+		}
 	}
 }
 
@@ -325,16 +377,70 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
-
+	rf.log = make([]LogEntry, 0)
+	rf.log = append(rf.log, LogEntry{0, 0})
+	rf.matchindex = make([]int, len(peers))
+	rf.nextindex = make([]int, len(peers))
+	for i := 0; i < len(peers); i++ {
+		rf.nextindex[i] = 1
+	}
+	rf.commitindex = 0
+	rf.lastApplied = 0
 	// Your initialization code here (2A, 2B, 2C).
 	rf.Refresh(0)
 	rf.currentTerm = 0
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
-
+	rf.applyChan = applyCh
 	// start ticker goroutine to start elections
 	go rf.ticker()
-
+	go rf.appendticker()
+	go rf.committedTicker()
 	return rf
 }
 
+func (rf *Raft) leaderappend() {
+	currentTerm := rf.currentTerm
+	me := rf.me
+	for i := 0; i < len(rf.peers); i++ {
+		if i == me {
+			continue
+		}
+		prevLogIndex := rf.nextindex[i] - 1
+		prevLogTerm := rf.log[prevLogIndex].Term
+		//fmt.Println(me, "sent heart to", i, "term:", currentTerm)
+		args := &AppendEntriesArgs{AppendEntries, currentTerm, me, prevLogIndex, prevLogTerm, LogEntry{}, rf.commitindex}
+		reply := &AppendEntriesReply{}
+		go rf.SendAppendEntries(i, args, reply)
+	}
+}
+func (rf *Raft) committedTicker() {
+	// put the committed entry to apply on the status machine
+	for rf.killed() == false {
+		time.Sleep(15 * time.Millisecond)
+		rf.mu.Lock()
+
+		if rf.lastApplied >= rf.commitindex {
+			rf.mu.Unlock()
+			continue
+		}
+		//fmt.Println(rf.me, rf.lastApplied, rf.commitindex)
+		Messages := make([]ApplyMsg, 0)
+		for rf.lastApplied < rf.commitindex && rf.lastApplied < len(rf.log)-1 {
+			rf.lastApplied += 1
+			//fmt.Println(rf.me, "已经提交", rf.lastApplied, rf.log[rf.lastApplied].Command)
+			Messages = append(Messages, ApplyMsg{
+				CommandValid:  true,
+				SnapshotValid: false,
+				CommandIndex:  rf.lastApplied,
+				Command:       rf.log[rf.lastApplied].Command,
+			})
+		}
+		rf.mu.Unlock()
+
+		for _, messages := range Messages {
+			rf.applyChan <- messages
+		}
+	}
+
+}

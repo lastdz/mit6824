@@ -1,7 +1,6 @@
 package raft
 
 import (
-	//"fmt"
 	"time"
 )
 
@@ -22,8 +21,10 @@ func (rf *Raft) Xuanju() {
 			continue
 		}
 		//fmt.Println(me, "sent xuanju to", i, "term :", currentTerm)
+		lastLogIndex := rf.nextindex[i] - 1
+		lastLogTerm := rf.log[lastLogIndex].Term
 		go func(a int) {
-			arg := &RequestVoteArgs{currentTerm, me}
+			arg := &RequestVoteArgs{currentTerm, me, lastLogIndex, lastLogTerm}
 			reply := &RequestVoteReply{}
 			rf.SendRequestVote(a, arg, reply)
 			rf.mu.Lock()
@@ -47,7 +48,12 @@ func (rf *Raft) Xuanju() {
 		rf.mu.Lock()
 		if flag == 1 && currentTerm == rf.currentTerm {
 			//fmt.Println(rf.me, "become leader term:", rf.currentTerm)
+			//fmt.Println(rf.me, "变成领导者在纪元:", rf.currentTerm, "日志状态:", rf.log)
 			rf.state = Leader
+			for i := 0; i < len(rf.peers); i++ {
+				rf.matchindex[i] = 0
+				rf.nextindex[i] = len(rf.log)
+			}
 			rf.Heartbeats()
 			rf.mu.Unlock()
 			return
@@ -60,4 +66,3 @@ func (rf *Raft) Xuanju() {
 		time.Sleep(time.Second / 100)
 	}
 }
-
