@@ -412,7 +412,7 @@ func (rf *Raft) leaderappend() {
 		prevLogIndex := rf.nextindex[i] - 1
 		prevLogTerm := rf.log[prevLogIndex].Term
 		//fmt.Println(me, "sent heart to", i, "term:", currentTerm)
-		args := &AppendEntriesArgs{AppendEntries, currentTerm, me, prevLogIndex, prevLogTerm, LogEntry{}, rf.commitindex}
+		args := &AppendEntriesArgs{AppendEntries, currentTerm, me, prevLogIndex, prevLogTerm, LogEntry{}, min(rf.commitindex, rf.matchindex[i])}
 		reply := &AppendEntriesReply{}
 		go rf.SendAppendEntries(i, args, reply)
 	}

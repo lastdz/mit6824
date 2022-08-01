@@ -21,32 +21,40 @@ type AppendEntriesReply struct {
 }
 
 func (rf *Raft) SendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
-
+	rf.mu.Lock()
 	if args.Is == Heart {
+		rf.mu.Unlock()
 		ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
+		rf.mu.Lock()
 		if ok {
 			if rf.currentTerm < reply.Term {
 				rf.Refresh(reply.Term)
 			}
 		}
+		rf.mu.Unlock()
 		return ok
 	} else if args.Is == AppendEntries {
 		if rf.nextindex[server] <= len(rf.log)-1 {
 			for rf.nextindex[server] <= len(rf.log)-1 {
 				if rf.state != Leader {
+					rf.mu.Unlock()
 					return true
 				}
 				args.PrevLogTerm = rf.log[args.PrevLogIndex].Term
 				args.Entries = rf.log[args.PrevLogIndex+1]
+				rf.mu.Unlock()
 				ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
+				rf.mu.Lock()
 				if ok {
 					if rf.currentTerm < reply.Term {
 						rf.Refresh(reply.Term)
+						rf.mu.Unlock()
 						return true
 					}
 					if reply.Success == false {
 						if rf.currentTerm < reply.Term {
 							rf.Refresh(reply.Term)
+							rf.mu.Unlock()
 							return false
 						}
 						args.PrevLogIndex--
@@ -58,6 +66,7 @@ func (rf *Raft) SendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 						rf.matchindex[server] = args.PrevLogIndex
 					}
 				} else {
+					rf.mu.Unlock()
 					return false
 				}
 			}
@@ -74,14 +83,13 @@ func (rf *Raft) SendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 			}
 			//fmt.Println(i, tmp)
 			if tmp > len(rf.peers)/2 {
-				rf.mu.Lock()
 				rf.commitindex = i
 				//fmt.Println(i)
-				rf.mu.Unlock()
 				break
 			}
 		}
 	}
+	rf.mu.Unlock()
 	return true
 }
 func min(a int, b int) int {
