@@ -136,17 +136,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 				}
 			} else {
 				rf.log = rf.log[:previ]
-				if args.LeaderCommit > rf.commitindex {
-					rf.commitindex = min(args.LeaderCommit, len(rf.log)-1)
-				}
 				reply.Success = false
 			}
 			return
 		}
 		if len(rf.log)-1 < previ {
-			if args.LeaderCommit > rf.commitindex {
-				rf.commitindex = min(args.LeaderCommit, len(rf.log)-1)
-			}
 			reply.Success = false
 		}
 	}
