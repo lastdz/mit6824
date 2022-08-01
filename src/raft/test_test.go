@@ -481,15 +481,14 @@ func TestRejoin2B(t *testing.T) {
 	cfg.rafts[leader1].Start(104)
 
 	// new leader commits, also for index=2
+	//fmt.Println(123)
 	cfg.one(103, 2, true)
 
 	// new leader network failure
 	leader2 := cfg.checkOneLeader()
 	cfg.disconnect(leader2)
-
 	// old leader connected again
 	cfg.connect(leader1)
-
 	cfg.one(104, 2, true)
 
 	// all together now
@@ -588,7 +587,6 @@ func TestCount2B(t *testing.T) {
 
 	leader := cfg.checkOneLeader()
 	total1 := rpcs()
-	fmt.Println(total1)
 
 	if total1 > 30 || total1 < 1 {
 		t.Fatalf("too many or few RPCs (%v) to elect initial leader\n", total1)

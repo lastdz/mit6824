@@ -192,7 +192,6 @@ type RequestVoteReply struct {
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
 	rf.mu.Lock()
-	//fmt.Println(rf.me, "term: ", rf.currentTerm, "recevice votereq from ", args.CandidateId, "term:", args.Term)
 	defer rf.mu.Unlock()
 	reply.Term = rf.currentTerm
 	if rf.currentTerm > args.Term {
@@ -205,6 +204,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if rf.votedFor != -1 || rf.state == Leader {
 		reply.VoteGranted = false
 	} else {
+		//fmt.Println(rf.me, args.CandidateId)
+		//fmt.Println(rf.log[len(rf.log)-1].Term, args.LastLogTerm, len(rf.log)-1, args.LastLogIndex)
 		if rf.log[len(rf.log)-1].Term > args.LastLogTerm || rf.log[len(rf.log)-1].Term == args.LastLogTerm && (len(rf.log)-1 > args.LastLogIndex) {
 			reply.VoteGranted = false
 			return
@@ -329,11 +330,13 @@ func (rf *Raft) killed() bool {
 func (rf *Raft) ticker() {
 
 	for rf.killed() == false {
+		//fmt.Println(rf.me, rf.commitindex, rf.log)
 		//fmt.Println(rf.me)
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
 		// time.Sleep().
 		if rf.state == Leader {
+			//fmt.Println(rf.me, "现在是领导者在纪元", rf.currentTerm)
 			//fmt.Println(rf.me, "领导者在纪元:", rf.currentTerm, "日志状态:", rf.log)
 			rf.mu.Lock()
 			rf.Heartbeats()
@@ -349,7 +352,7 @@ func (rf *Raft) ticker() {
 }
 func (rf *Raft) appendticker() {
 	for rf.killed() == false {
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 		rf.mu.Lock()
 		if rf.state == Leader {
 			rf.leaderappend()

@@ -21,11 +21,12 @@ func (rf *Raft) Xuanju() {
 			continue
 		}
 		//fmt.Println(me, "sent xuanju to", i, "term :", currentTerm)
-		lastLogIndex := rf.nextindex[i] - 1
+		lastLogIndex := len(rf.log) - 1
 		lastLogTerm := rf.log[lastLogIndex].Term
 		go func(a int) {
 			arg := &RequestVoteArgs{currentTerm, me, lastLogIndex, lastLogTerm}
 			reply := &RequestVoteReply{}
+			//fmt.Println(me, "send xuanju to", a, "term :", currentTerm)
 			rf.SendRequestVote(a, arg, reply)
 			rf.mu.Lock()
 			if reply.Term > rf.currentTerm {

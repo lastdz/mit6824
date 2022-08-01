@@ -52,6 +52,7 @@ func (rf *Raft) SendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 						args.PrevLogIndex--
 						rf.nextindex[server] = args.PrevLogIndex + 1
 					} else {
+						//fmt.Println(server, "成功复制", args.PrevLogIndex+1, args.Entries.Command)
 						args.PrevLogIndex++
 						rf.nextindex[server] = args.PrevLogIndex + 1
 						rf.matchindex[server] = args.PrevLogIndex
@@ -98,6 +99,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	if args.Is == Heart {
 		//fmt.Println(rf.me, rf.log)
 		reply.Term = rf.currentTerm
+
 		if rf.currentTerm > args.Term {
 			return
 		} else {
@@ -120,9 +122,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 				rf.votedFor = args.LeaderID
 			}
 		}
-		if args.LeaderCommit > rf.commitindex {
-			rf.commitindex = min(args.LeaderCommit, len(rf.log)-1)
-		}
 
 		rf.leader = args.LeaderID
 		previ := args.PrevLogIndex
@@ -132,15 +131,22 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 				reply.Success = true
 				rf.log = rf.log[:previ+1]
 				rf.log = append(rf.log, args.Entries)
+				if args.LeaderCommit > rf.commitindex {
+					rf.commitindex = min(args.LeaderCommit, len(rf.log)-1)
+				}
 			} else {
 				rf.log = rf.log[:previ]
-
+				if args.LeaderCommit > rf.commitindex {
+					rf.commitindex = min(args.LeaderCommit, len(rf.log)-1)
+				}
 				reply.Success = false
 			}
 			return
 		}
 		if len(rf.log)-1 < previ {
-
+			if args.LeaderCommit > rf.commitindex {
+				rf.commitindex = min(args.LeaderCommit, len(rf.log)-1)
+			}
 			reply.Success = false
 		}
 	}
@@ -155,7 +161,7 @@ func (rf *Raft) Heartbeats() {
 		//fmt.Println(me, "sent heart to", i, "term:", currentTerm)
 		prevLogIndex := rf.nextindex[i] - 1
 		prevLogTerm := rf.log[prevLogIndex].Term
-		args := &AppendEntriesArgs{Heart, currentTerm, me, prevLogIndex, prevLogTerm, LogEntry{}, rf.commitindex}
+		args := &AppendEntriesArgs{Heart, currentTerm, me, prevLogIndex, prevLogTerm, LogEntry{}, min(rf.commitindex, rf.matchindex[i])}
 		reply := &AppendEntriesReply{}
 		go rf.SendAppendEntries(i, args, reply)
 	}
