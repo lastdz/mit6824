@@ -343,6 +343,7 @@ func (rf *Raft) killed() bool {
 func (rf *Raft) ticker() {
 
 	for rf.killed() == false {
+		rf.mu.Lock()
 		//fmt.Println(rf.me, rf.log)
 		//fmt.Println(rf.me)
 		// Your code here to check if a leader election should
@@ -350,14 +351,17 @@ func (rf *Raft) ticker() {
 		// time.Sleep().
 		if rf.state == Leader {
 			//fmt.Println(rf.me, "现在是领导者在纪元", rf.currentTerm)
-			//fmt.Println(rf.me, "领导者在纪元:", rf.currentTerm, "日志状态:", rf.log)
-			rf.mu.Lock()
-			rf.Heartbeats()
+
 			rf.mu.Unlock()
+			rf.Heartbeats()
+
 		} else {
 			//fmt.Println(rf.me, "跟随者在纪元:", rf.currentTerm, "日志状态:", rf.log)
 			if time.Now().After(rf.timeout) {
+				rf.mu.Unlock()
 				rf.Xuanju()
+			} else {
+				rf.mu.Unlock()
 			}
 		}
 		time.Sleep(time.Second / 20)
@@ -419,6 +423,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 }
 
 func (rf *Raft) leaderappend() {
+	fmt.Println(rf.me, "领导者在纪元:", rf.currentTerm, "发送复制请求日志状态:", rf.log)
 	currentTerm := rf.currentTerm
 	me := rf.me
 	for i := 0; i < len(rf.peers); i++ {

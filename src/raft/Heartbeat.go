@@ -1,5 +1,7 @@
 package raft
 
+import "fmt"
+
 const (
 	Heart = iota
 	AppendEntries
@@ -35,6 +37,7 @@ func (rf *Raft) SendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 		rf.mu.Unlock()
 		return ok
 	} else if args.Is == AppendEntries {
+		
 		if rf.nextindex[server] <= len(rf.log)-1 {
 			for rf.nextindex[server] <= len(rf.log)-1 {
 				if rf.state != Leader {
@@ -54,7 +57,7 @@ func (rf *Raft) SendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 					if rf.currentTerm < reply.Term {
 						rf.Refresh(reply.Term)
 						rf.mu.Unlock()
-						return true
+						return false
 					}
 					if reply.Success == false {
 						if rf.currentTerm < reply.Term {
@@ -74,9 +77,9 @@ func (rf *Raft) SendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 						rf.mu.Lock()
 						if ok {
 							if reply.Success == true {
-								//fmt.Println("11", server)
-								//fmt.Println(rf.matchindex[server])
-								//fmt.Println(len(rf.log))
+								fmt.Println(server, "changeed", "at term", rf.currentTerm)
+								fmt.Println(rf.matchindex[server])
+								fmt.Println(len(rf.log))
 								rf.nextindex[server] = limit
 								rf.matchindex[server] = limit - 1
 								//fmt.Println(rf.matchindex[server])
@@ -162,7 +165,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 					//fmt.Println(rf.me, args.Entries)
 					rf.log = rf.log[:previ+1]
 					rf.log = append(rf.log, args.Entries...)
-					//fmt.Println(rf.me, "复制了", args.LeaderID, len(rf.log), "当前commitindex", rf.commitindex)
+					fmt.Println(rf.me, "复制了", args.LeaderID, len(rf.log), "当前commitindex", rf.commitindex)
 					rf.persist()
 					if args.LeaderCommit > rf.commitindex {
 						rf.commitindex = min(args.LeaderCommit, len(rf.log)-1)

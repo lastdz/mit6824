@@ -175,8 +175,10 @@ func (cfg *config) applier(i int, applyCh chan ApplyMsg) {
 			}
 			if err_msg != "" {
 				for i := 0; i < cfg.n; i++ {
-					fmt.Println(i, len(cfg.rafts[i].log), cfg.rafts[i].log, cfg.rafts[i].commitindex)
-					fmt.Println(cfg.rafts[i].matchindex)
+					pp := cfg.rafts[i]
+					fmt.Println(i, len(pp.log), pp.log, pp.commitindex, pp.currentTerm, pp.lastApplied)
+					fmt.Println(pp.nextindex)
+					fmt.Println(pp.matchindex)
 				}
 				log.Fatalf("apply error: %v", err_msg)
 				cfg.applyErr[i] = err_msg
