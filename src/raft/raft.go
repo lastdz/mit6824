@@ -22,6 +22,8 @@ import (
 
 	//"fmt"
 
+	"bytes"
+	"fmt"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -29,6 +31,7 @@ import (
 	"time"
 
 	//	"6.824/labgob"
+	"6.824/labgob"
 	"6.824/labrpc"
 )
 
@@ -113,12 +116,16 @@ func (rf *Raft) GetState() (int, bool) {
 func (rf *Raft) persist() {
 	// Your code here (2C).
 	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// data := w.Bytes()
-	// rf.persister.SaveRaftState(data)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.log)
+	//fmt.Println("save", rf.me, rf.log)
+
+	data := w.Bytes()
+	//fmt.Println(data)
+	rf.persister.SaveRaftState(data)
 }
 
 //
@@ -130,17 +137,21 @@ func (rf *Raft) readPersist(data []byte) {
 	}
 	// Your code here (2C).
 	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm int
+	var votedFor int
+	var logs []LogEntry
+	if d.Decode(&currentTerm) != nil ||
+		d.Decode(&votedFor) != nil ||
+		d.Decode(&logs) != nil {
+		fmt.Println("decode error")
+	} else {
+		rf.currentTerm = currentTerm
+		rf.votedFor = votedFor
+		rf.log = logs
+		//fmt.Printf("RaftNode[%d] persist read, currentTerm[%d] voteFor[%d] log[%v]\n", rf.me, currentTerm, votedFor, logs)
+	}
 }
 
 //
@@ -330,7 +341,7 @@ func (rf *Raft) killed() bool {
 func (rf *Raft) ticker() {
 
 	for rf.killed() == false {
-		//fmt.Println(rf.me, rf.commitindex, rf.log)
+		//fmt.Println(rf.me, rf.log)
 		//fmt.Println(rf.me)
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
@@ -412,7 +423,7 @@ func (rf *Raft) leaderappend() {
 		prevLogIndex := rf.nextindex[i] - 1
 		prevLogTerm := rf.log[prevLogIndex].Term
 		//fmt.Println(me, "sent heart to", i, "term:", currentTerm)
-		args := &AppendEntriesArgs{AppendEntries, currentTerm, me, prevLogIndex, prevLogTerm, LogEntry{}, min(rf.commitindex, rf.matchindex[i])}
+		args := &AppendEntriesArgs{AppendEntries, currentTerm, me, prevLogIndex, prevLogTerm, nil, min(rf.commitindex, rf.matchindex[i])}
 		reply := &AppendEntriesReply{}
 		go rf.SendAppendEntries(i, args, reply)
 	}
