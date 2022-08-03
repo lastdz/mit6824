@@ -148,6 +148,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			if rf.currentTerm < args.Term {
 				rf.Refresh(args.Term)
 				rf.votedFor = args.LeaderID
+				rf.persist()
 			}
 		}
 

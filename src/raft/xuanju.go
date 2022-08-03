@@ -15,6 +15,7 @@ func (rf *Raft) Xuanju() {
 	flag := 0
 	rf.votedFor = rf.me
 	rf.state = Candidate
+	rf.persist()
 	rf.mu.Unlock()
 	for i := 0; i < len(rf.peers); i++ {
 		if i == me {

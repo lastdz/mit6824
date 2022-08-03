@@ -223,6 +223,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		}
 		reply.VoteGranted = true
 		rf.votedFor = args.CandidateId
+		rf.persist()
 	}
 }
 
@@ -239,6 +240,7 @@ func (rf *Raft) Refresh(term int) {
 	rf.currentTerm = term
 	rf.votedFor = -1
 	rf.state = Follower
+	rf.persist()
 	rf.Refreshtime()
 }
 
@@ -401,7 +403,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.commitindex = 0
 	rf.lastApplied = 0
 	// Your initialization code here (2A, 2B, 2C).
-	rf.Refresh(0)
+	rf.currentTerm = 0
+	rf.votedFor = -1
+	rf.state = Follower
+	rf.Refreshtime()
 	rf.currentTerm = 0
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
