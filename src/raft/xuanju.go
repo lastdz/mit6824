@@ -28,8 +28,12 @@ func (rf *Raft) Xuanju() {
 			arg := &RequestVoteArgs{currentTerm, me, lastLogIndex, lastLogTerm}
 			reply := &RequestVoteReply{}
 			//fmt.Println(me, "send xuanju to", a, "term :", currentTerm)
-			rf.SendRequestVote(a, arg, reply)
+			ok := rf.SendRequestVote(a, arg, reply)
 			rf.mu.Lock()
+			if ok == false {
+				return
+			}
+
 			if reply.Term > rf.currentTerm {
 				rf.Refresh(reply.Term)
 			}
