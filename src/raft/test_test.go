@@ -680,130 +680,129 @@ loop:
 	cfg.end()
 }
 
-// func TestPersist12C(t *testing.T) {
-// 	servers := 3
-// 	cfg := make_config(t, servers, false, false)
-// 	defer cfg.cleanup()
+func TestPersist12C(t *testing.T) {
+	servers := 3
+	cfg := make_config(t, servers, false, false)
+	defer cfg.cleanup()
 
-// 	cfg.begin("Test (2C): basic persistence")
+	cfg.begin("Test (2C): basic persistence")
 
-// 	cfg.one(11, servers, true)
-// 	// crash and re-start all
-// 	for i := 0; i < servers; i++ {
+	cfg.one(11, servers, true)
+	// crash and re-start all
+	for i := 0; i < servers; i++ {
 
-// 		cfg.start1(i, cfg.applier)
-// 		//fmt.Println("restart", i)
-// 	}
-// 	for i := 0; i < servers; i++ {
-// 		cfg.disconnect(i)
-// 		cfg.connect(i)
-// 	}
-// 	//fmt.Println(123)
-// 	cfg.one(12, servers, true)
+		cfg.start1(i, cfg.applier)
+		//fmt.Println("restart", i)
+	}
+	for i := 0; i < servers; i++ {
+		cfg.disconnect(i)
+		cfg.connect(i)
+	}
+	//fmt.Println(123)
+	cfg.one(12, servers, true)
 
-// 	leader1 := cfg.checkOneLeader()
-// 	cfg.disconnect(leader1)
-// 	cfg.start1(leader1, cfg.applier)
-// 	cfg.connect(leader1)
+	leader1 := cfg.checkOneLeader()
+	cfg.disconnect(leader1)
+	cfg.start1(leader1, cfg.applier)
+	cfg.connect(leader1)
 
-// 	cfg.one(13, servers, true)
+	cfg.one(13, servers, true)
 
-// 	leader2 := cfg.checkOneLeader()
-// 	cfg.disconnect(leader2)
-// 	cfg.one(14, servers-1, true)
-// 	cfg.start1(leader2, cfg.applier)
-// 	cfg.connect(leader2)
+	leader2 := cfg.checkOneLeader()
+	cfg.disconnect(leader2)
+	cfg.one(14, servers-1, true)
+	cfg.start1(leader2, cfg.applier)
+	cfg.connect(leader2)
 
-// 	cfg.wait(4, servers, -1) // wait for leader2 to join before killing i3
+	cfg.wait(4, servers, -1) // wait for leader2 to join before killing i3
 
-// 	i3 := (cfg.checkOneLeader() + 1) % servers
-// 	cfg.disconnect(i3)
-// 	cfg.one(15, servers-1, true)
-// 	cfg.start1(i3, cfg.applier)
-// 	cfg.connect(i3)
+	i3 := (cfg.checkOneLeader() + 1) % servers
+	cfg.disconnect(i3)
+	cfg.one(15, servers-1, true)
+	cfg.start1(i3, cfg.applier)
+	cfg.connect(i3)
 
-// 	cfg.one(16, servers, true)
+	cfg.one(16, servers, true)
 
-// 	cfg.end()
-// }
+	cfg.end()
+}
 
-// func TestPersist22C(t *testing.T) {
-// 	servers := 5
-// 	cfg := make_config(t, servers, false, false)
-// 	defer cfg.cleanup()
+func TestPersist22C(t *testing.T) {
+	servers := 5
+	cfg := make_config(t, servers, false, false)
+	defer cfg.cleanup()
 
-// 	cfg.begin("Test (2C): more persistence")
+	cfg.begin("Test (2C): more persistence")
 
-// 	index := 1
-// 	for iters := 0; iters < 5; iters++ {
-// 		cfg.one(10+index, servers, true)
-// 		index++
+	index := 1
+	for iters := 0; iters < 5; iters++ {
+		cfg.one(10+index, servers, true)
+		index++
 
-// 		leader1 := cfg.checkOneLeader()
+		leader1 := cfg.checkOneLeader()
 
-// 		cfg.disconnect((leader1 + 1) % servers)
-// 		cfg.disconnect((leader1 + 2) % servers)
+		cfg.disconnect((leader1 + 1) % servers)
+		cfg.disconnect((leader1 + 2) % servers)
 
-// 		cfg.one(10+index, servers-2, true)
-// 		index++
+		cfg.one(10+index, servers-2, true)
+		index++
 
-// 		cfg.disconnect((leader1 + 0) % servers)
-// 		cfg.disconnect((leader1 + 3) % servers)
-// 		cfg.disconnect((leader1 + 4) % servers)
+		cfg.disconnect((leader1 + 0) % servers)
+		cfg.disconnect((leader1 + 3) % servers)
+		cfg.disconnect((leader1 + 4) % servers)
 
-// 		cfg.start1((leader1+1)%servers, cfg.applier)
-// 		cfg.start1((leader1+2)%servers, cfg.applier)
-// 		cfg.connect((leader1 + 1) % servers)
-// 		cfg.connect((leader1 + 2) % servers)
+		cfg.start1((leader1+1)%servers, cfg.applier)
+		cfg.start1((leader1+2)%servers, cfg.applier)
+		cfg.connect((leader1 + 1) % servers)
+		cfg.connect((leader1 + 2) % servers)
 
-// 		time.Sleep(RaftElectionTimeout)
+		time.Sleep(RaftElectionTimeout)
 
-// 		cfg.start1((leader1+3)%servers, cfg.applier)
-// 		cfg.connect((leader1 + 3) % servers)
+		cfg.start1((leader1+3)%servers, cfg.applier)
+		cfg.connect((leader1 + 3) % servers)
 
-// 		cfg.one(10+index, servers-2, true)
-// 		index++
+		cfg.one(10+index, servers-2, true)
+		index++
 
-// 		cfg.connect((leader1 + 4) % servers)
-// 		cfg.connect((leader1 + 0) % servers)
-// 	}
+		cfg.connect((leader1 + 4) % servers)
+		cfg.connect((leader1 + 0) % servers)
+	}
 
-// 	cfg.one(1000, servers, true)
+	cfg.one(1000, servers, true)
 
-// 	cfg.end()
-// }
+	cfg.end()
+}
 
-// func TestPersist32C(t *testing.T) {
-// 	servers := 3
-// 	cfg := make_config(t, servers, false, false)
-// 	defer cfg.cleanup()
+func TestPersist32C(t *testing.T) {
+	servers := 3
+	cfg := make_config(t, servers, false, false)
+	defer cfg.cleanup()
 
-// 	cfg.begin("Test (2C): partitioned leader and one follower crash, leader restarts")
+	cfg.begin("Test (2C): partitioned leader and one follower crash, leader restarts")
 
-// 	cfg.one(101, 3, true)
+	cfg.one(101, 3, true)
 
-// 	leader := cfg.checkOneLeader()
-// 	cfg.disconnect((leader + 2) % servers)
+	leader := cfg.checkOneLeader()
+	cfg.disconnect((leader + 2) % servers)
 
-// 	cfg.one(102, 2, true)
+	cfg.one(102, 2, true)
 
-// 	cfg.crash1((leader + 0) % servers)
-// 	cfg.crash1((leader + 1) % servers)
-// 	cfg.connect((leader + 2) % servers)
-// 	cfg.start1((leader+0)%servers, cfg.applier)
-// 	cfg.connect((leader + 0) % servers)
+	cfg.crash1((leader + 0) % servers)
+	cfg.crash1((leader + 1) % servers)
+	cfg.connect((leader + 2) % servers)
+	cfg.start1((leader+0)%servers, cfg.applier)
+	cfg.connect((leader + 0) % servers)
 
-// 	cfg.one(103, 2, true)
+	cfg.one(103, 2, true)
 
-// 	cfg.start1((leader+1)%servers, cfg.applier)
-// 	cfg.connect((leader + 1) % servers)
+	cfg.start1((leader+1)%servers, cfg.applier)
+	cfg.connect((leader + 1) % servers)
 
-// 	cfg.one(104, servers, true)
+	cfg.one(104, servers, true)
 
-// 	cfg.end()
-// }
+	cfg.end()
+}
 
-//
 // Test the scenarios described in Figure 8 of the extended Raft paper. Each
 // iteration asks a leader, if there is one, to insert a command in the Raft
 // log.  If there is a leader, that leader will fail quickly with a high
@@ -812,7 +811,7 @@ loop:
 // alive servers isn't enough to form a majority, perhaps start a new server.
 // The leader in a new term may try to finish replicating log entries that
 // haven't been committed yet.
-//
+
 func TestFigure82C(t *testing.T) {
 	servers := 5
 	cfg := make_config(t, servers, false, false)

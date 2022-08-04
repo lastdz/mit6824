@@ -352,8 +352,8 @@ func (rf *Raft) ticker() {
 		if rf.state == Leader {
 			//fmt.Println(rf.me, "现在是领导者在纪元", rf.currentTerm)
 
-			rf.mu.Unlock()
 			rf.Heartbeats()
+			rf.mu.Unlock()
 
 		} else {
 			//fmt.Println(rf.me, "跟随者在纪元:", rf.currentTerm, "日志状态:", rf.log)
@@ -423,7 +423,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 }
 
 func (rf *Raft) leaderappend() {
-	fmt.Println(rf.me, "领导者在纪元:", rf.currentTerm, "发送复制请求日志状态:", rf.log)
+	//fmt.Println(rf.me, "领导者在纪元:", rf.currentTerm, "发送复制请求日志状态:", rf.log)
 	currentTerm := rf.currentTerm
 	me := rf.me
 	for i := 0; i < len(rf.peers); i++ {
