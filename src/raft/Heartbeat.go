@@ -92,6 +92,9 @@ func (rf *Raft) SendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 			}
 		}
 		for i := len(rf.log) - 1; i > rf.commitindex; i-- {
+			if rf.log[i].Term != rf.currentTerm {
+				break
+			}
 			tmp := 1
 			for j := 0; j < len(rf.peers); j++ {
 				if j == rf.me {
@@ -101,7 +104,6 @@ func (rf *Raft) SendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 					tmp++
 				}
 			}
-			//fmt.Println(i, tmp)
 			if tmp > len(rf.peers)/2 {
 				rf.commitindex = i
 				//fmt.Println(i)
@@ -132,8 +134,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		if rf.currentTerm > args.Term {
 			return
 		} else {
-			rf.currentTerm = args.Term
-			rf.Refresh(rf.currentTerm)
+			if rf.currentTerm <= args.Term {
+				rf.Refresh(args.Term)
+				rf.votedFor = args.LeaderID
+				rf.persist()
+			}
 		}
 		if args.LeaderCommit > rf.commitindex {
 			rf.commitindex = min(args.LeaderCommit, len(rf.log)-1)

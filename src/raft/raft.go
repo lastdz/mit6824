@@ -345,7 +345,6 @@ func (rf *Raft) ticker() {
 	for rf.killed() == false {
 		rf.mu.Lock()
 		//fmt.Println(rf.me, rf.log)
-		//fmt.Println(rf.me)
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
 		// time.Sleep().
@@ -364,7 +363,7 @@ func (rf *Raft) ticker() {
 				rf.mu.Unlock()
 			}
 		}
-		time.Sleep(time.Second / 20)
+		time.Sleep(time.Second / 10)
 	}
 }
 func (rf *Raft) appendticker() {
@@ -441,7 +440,7 @@ func (rf *Raft) leaderappend() {
 func (rf *Raft) committedTicker() {
 	// put the committed entry to apply on the status machine
 	for rf.killed() == false {
-		time.Sleep(15 * time.Millisecond)
+		time.Sleep(40 * time.Millisecond)
 		rf.mu.Lock()
 
 		if rf.lastApplied >= rf.commitindex {

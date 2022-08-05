@@ -31,6 +31,7 @@ func (rf *Raft) Xuanju() {
 			ok := rf.SendRequestVote(a, arg, reply)
 			rf.mu.Lock()
 			if ok == false {
+				rf.mu.Unlock()
 				return
 			}
 
@@ -62,7 +63,6 @@ func (rf *Raft) Xuanju() {
 				rf.matchindex[i] = 0
 				rf.nextindex[i] = len(rf.log)
 			}
-
 			rf.mu.Unlock()
 			return
 		}
