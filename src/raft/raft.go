@@ -363,12 +363,12 @@ func (rf *Raft) ticker() {
 				rf.mu.Unlock()
 			}
 		}
-		time.Sleep(time.Second / 10)
+		time.Sleep(time.Second / 20)
 	}
 }
 func (rf *Raft) appendticker() {
 	for rf.killed() == false {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
 		rf.mu.Lock()
 		if rf.state == Leader {
 			rf.leaderappend()
@@ -440,7 +440,7 @@ func (rf *Raft) leaderappend() {
 func (rf *Raft) committedTicker() {
 	// put the committed entry to apply on the status machine
 	for rf.killed() == false {
-		time.Sleep(40 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
 		rf.mu.Lock()
 
 		if rf.lastApplied >= rf.commitindex {
