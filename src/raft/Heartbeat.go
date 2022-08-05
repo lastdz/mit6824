@@ -5,6 +5,13 @@ const (
 	AppendEntries
 )
 
+func max(a int, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 type AppendEntriesArgs struct {
 	Is           int
 	Term         int
@@ -78,8 +85,8 @@ func (rf *Raft) SendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 								//fmt.Println(server, "changeed", "at term", rf.currentTerm)
 								//fmt.Println(rf.matchindex[server])
 								//fmt.Println(len(rf.log))
-								rf.nextindex[server] = limit
-								rf.matchindex[server] = limit - 1
+								rf.nextindex[server] = max(limit, rf.nextindex[server])
+								rf.matchindex[server] = rf.nextindex[server] - 1
 								//fmt.Println(rf.matchindex[server])
 							}
 						}
@@ -163,9 +170,14 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		prevt := args.PrevLogTerm
 		if len(rf.log)-1 >= previ {
 			if rf.log[previ].Term == prevt {
-
 				if len(args.Entries) > 0 {
 					//fmt.Println(rf.me, args.Entries)
+					len1 := len(args.Entries) + args.PrevLogIndex
+					len2 := rf.commitindex
+					if len1 <= len2 {
+						reply.Success = false
+						return
+					}
 					rf.log = rf.log[:previ+1]
 					rf.log = append(rf.log, args.Entries...)
 					//fmt.Println(rf.me, "复制了", args.LeaderID, len(rf.log), "当前commitindex", rf.commitindex)
@@ -177,7 +189,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 				reply.Success = true
 
 			} else {
-				rf.log = rf.log[:previ]
 				reply.Success = false
 				rf.persist()
 			}
