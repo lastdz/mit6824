@@ -58,11 +58,12 @@ func (rf *Raft) Xuanju() {
 			//fmt.Println(rf.me, "变成领导者在纪元:", rf.currentTerm, "日志状态:", rf.log)
 			rf.state = Leader
 			rf.persist()
-			rf.Heartbeats()
+
 			for i := 0; i < len(rf.peers); i++ {
 				rf.matchindex[i] = 0
 				rf.nextindex[i] = len(rf.log)
 			}
+			rf.Heartbeats()
 			rf.mu.Unlock()
 			return
 		}
