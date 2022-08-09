@@ -43,13 +43,19 @@ func (rf *Raft) SendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 		return ok
 	} else if args.Is == AppendEntries {
 
-		if rf.nextindex[server] <= len(rf.log)-1 {
-			for rf.nextindex[server] <= len(rf.log)-1 {
+		if rf.nextindex[server] <= rf.getlastindex() {
+			for rf.nextindex[server] <= rf.getlastindex() {
 				if rf.state != Leader {
 					rf.mu.Unlock()
 					return true
 				}
-				args.PrevLogTerm = rf.log[args.PrevLogIndex].Term
+				if args.PrevLogIndex < rf.base {
+					go rf.leaderSendSnapShot(server)
+					rf.mu.Unlock()
+					return true
+				}
+
+				args.PrevLogTerm = rf.getTerm(args.PrevLogIndex)
 				args.Entries = nil
 				rf.mu.Unlock()
 				ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
@@ -73,10 +79,19 @@ func (rf *Raft) SendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 						args.PrevLogIndex = reply.Index - 1
 						rf.nextindex[server] = args.PrevLogIndex + 1
 					} else {
+						if args.PrevLogIndex < rf.base {
+							go rf.leaderSendSnapShot(server)
+							rf.mu.Unlock()
+							return true
+						}
 						//fmt.Println(server, "成功复制到", len(rf.log))
-						args.PrevLogTerm = rf.log[args.PrevLogIndex].Term
-						args.Entries = rf.log[args.PrevLogIndex+1:]
-						limit := len(rf.log)
+						//fmt.Println(rf.me, args.PrevLogIndex, rf.base)
+						args.PrevLogTerm = rf.getTerm(args.PrevLogIndex)
+						args.Entries = make([]LogEntry, 0)
+						for i := args.PrevLogIndex + 1; i <= rf.getlastindex(); i++ {
+							args.Entries = append(args.Entries, rf.getLog(i))
+						}
+						limit := rf.getlastindex() + 1
 						rf.mu.Unlock()
 						ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
 						rf.mu.Lock()
@@ -98,8 +113,8 @@ func (rf *Raft) SendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 				}
 			}
 		}
-		for i := len(rf.log) - 1; i > rf.commitindex; i-- {
-			if rf.log[i].Term != rf.currentTerm {
+		for i := rf.getlastindex(); i > rf.commitindex; i-- {
+			if rf.getTerm(i) != rf.currentTerm {
 				break
 			}
 			tmp := 1
@@ -154,7 +169,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			}
 		}
 		if args.LeaderCommit > rf.commitindex {
-			rf.commitindex = min(args.LeaderCommit, len(rf.log)-1)
+			rf.commitindex = min(args.LeaderCommit, rf.getlastindex())
 		}
 		reply.Success = true
 	} else if args.Is == AppendEntries {
@@ -172,22 +187,26 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 		previ := args.PrevLogIndex
 		prevt := args.PrevLogTerm
-		if len(rf.log)-1 >= previ {
-			if rf.log[previ].Term == prevt {
+		if rf.getlastindex() >= previ {
+			if previ >= rf.base && rf.getTerm(previ) == prevt {
 				if len(args.Entries) > 0 {
 					//fmt.Println(rf.me, args.Entries)
 					len1 := len(args.Entries) + args.PrevLogIndex
-					len2 := len(rf.log) - 1
+					len2 := rf.getlastindex()
 					if len1 <= len2 && rf.leader == args.LeaderID {
 						reply.Success = false
 						return
 					}
-					rf.log = rf.log[:previ+1]
-					rf.log = append(rf.log, args.Entries...)
+					tmplog := make([]LogEntry, 0)
+					tmplog = append(tmplog, LogEntry{0, 0})
+					for i := rf.base + 1; i <= previ; i++ {
+						tmplog = append(tmplog, rf.getLog(i))
+					}
+					rf.log = append(tmplog, args.Entries...)
 					//fmt.Println(rf.me, "复制了", args.LeaderID, len(rf.log), "当前commitindex", rf.commitindex)
 					rf.persist()
 					if args.LeaderCommit > rf.commitindex {
-						rf.commitindex = min(args.LeaderCommit, len(rf.log)-1)
+						rf.commitindex = min(args.LeaderCommit, rf.getlastindex())
 					}
 					//fmt.Println(rf.me, "复制了", args.Entries)
 					rf.leader = args.LeaderID
@@ -200,7 +219,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			}
 			return
 		}
-		if len(rf.log)-1 < previ {
+		if rf.getlastindex() < previ {
 			reply.Success = false
 		}
 	}

@@ -237,7 +237,7 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 			}
 		} else if m.CommandValid {
 			if m.CommandIndex != cfg.lastApplied[i]+1 {
-				err_msg = fmt.Sprintf("server %v apply out of order, expected index %v, got %v", i, cfg.lastApplied[i]+1, m.CommandIndex)
+				fmt.Println(m.CommandIndex, cfg.lastApplied[i]+1)
 			}
 
 			if err_msg == "" {
@@ -622,7 +622,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 		fmt.Println(11112)
 		for i := 0; i < cfg.n; i++ {
 			pp := cfg.rafts[i]
-			fmt.Println(i, len(pp.log), pp.log, pp.commitindex, pp.currentTerm, pp.lastApplied)
+			fmt.Println(i, len(pp.log), pp.log, pp.commitindex, pp.currentTerm, pp.lastApplied, pp.base)
 			fmt.Println(pp.nextindex)
 			fmt.Println(pp.matchindex)
 		}

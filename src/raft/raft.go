@@ -93,6 +93,9 @@ type Raft struct {
 	nextindex   []int
 	matchindex  []int
 
+	base     int
+	lastterm int
+
 	applyChan chan ApplyMsg
 }
 
@@ -113,7 +116,7 @@ func (rf *Raft) GetState() (int, bool) {
 // where it can later be retrieved after a crash and restart.
 // see paper's Figure 2 for a description of what should be persistent.
 //
-func (rf *Raft) persist() {
+func (rf *Raft) persistData() []byte {
 	// Your code here (2C).
 	// Example:
 	w := new(bytes.Buffer)
@@ -121,10 +124,17 @@ func (rf *Raft) persist() {
 	e.Encode(rf.currentTerm)
 	e.Encode(rf.votedFor)
 	e.Encode(rf.log)
+	e.Encode(rf.base)
+	e.Encode(rf.lastterm)
+
 	//fmt.Println("save", rf.me, rf.log)
 
 	data := w.Bytes()
 	//fmt.Println(data)
+	return data
+}
+func (rf *Raft) persist() {
+	data := rf.persistData()
 	rf.persister.SaveRaftState(data)
 }
 
@@ -142,15 +152,20 @@ func (rf *Raft) readPersist(data []byte) {
 	var currentTerm int
 	var votedFor int
 	var logs []LogEntry
+	var base int
+	var lastIncludeTerm int
 	if d.Decode(&currentTerm) != nil ||
 		d.Decode(&votedFor) != nil ||
-		d.Decode(&logs) != nil {
+		d.Decode(&logs) != nil ||
+		d.Decode(&base) != nil ||
+		d.Decode(&lastIncludeTerm) != nil {
 		fmt.Println("decode error")
 	} else {
 		rf.currentTerm = currentTerm
 		rf.votedFor = votedFor
 		rf.log = logs
-		//fmt.Printf("RaftNode[%d] persist read, currentTerm[%d] voteFor[%d] log[%v]\n", rf.me, currentTerm, votedFor, logs)
+		rf.base = base
+		rf.lastterm = lastIncludeTerm
 	}
 }
 
@@ -161,7 +176,6 @@ func (rf *Raft) readPersist(data []byte) {
 func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
 
 	// Your code here (2D).
-
 	return true
 }
 
@@ -169,9 +183,54 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 // all info up to and including index. this means the
 // service no longer needs the log through (and including)
 // that index. Raft should now trim its log as much as possible.
+func (rf *Raft) getlastindex() int {
+	return len(rf.log) + rf.base - 1
+}
+func (rf *Raft) getlastTerm() int {
+	if len(rf.log)-1 == 0 {
+		return rf.lastterm
+	} else {
+		return rf.log[len(rf.log)-1].Term
+	}
+}
+func (rf *Raft) getLog(index int) LogEntry {
+	return rf.log[index-rf.base]
+}
+func (rf *Raft) getTerm(index int) int {
+	//fmt.Println(index, rf.base)
+	if index == rf.base {
+		return rf.lastterm
+	}
+	return rf.log[index-rf.base].Term
+}
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
-
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if index <= rf.base || index > rf.commitindex {
+		return
+	}
+	Log := make([]LogEntry, 0)
+	Log = append(Log, LogEntry{0, 0})
+	for i := index + 1; i <= rf.getlastindex(); i++ {
+		Log = append(Log, rf.getLog(i))
+	}
+	if index == rf.getlastindex() {
+		rf.lastterm = rf.getlastTerm()
+	} else {
+		rf.lastterm = rf.getTerm(index)
+	}
+	//fmt.Println(rf.me, "快照", rf.log)
+	rf.base = index
+	rf.log = Log
+	//fmt.Println(rf.log)
+	if index > rf.commitindex {
+		rf.commitindex = index
+	}
+	if index > rf.lastApplied {
+		rf.lastApplied = index
+	}
+	rf.persister.SaveStateAndSnapshot(rf.persistData(), snapshot)
 }
 
 //
@@ -217,7 +276,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	} else {
 		//fmt.Println(rf.me, args.CandidateId)
 		//fmt.Println(rf.log[len(rf.log)-1].Term, args.LastLogTerm, len(rf.log)-1, args.LastLogIndex)
-		if rf.log[len(rf.log)-1].Term > args.LastLogTerm || rf.log[len(rf.log)-1].Term == args.LastLogTerm && (len(rf.log)-1 > args.LastLogIndex) {
+		if rf.getlastTerm() > args.LastLogTerm || rf.getlastTerm() == args.LastLogTerm && (rf.getlastindex() > args.LastLogIndex) {
 			reply.VoteGranted = false
 			return
 		}
@@ -310,7 +369,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	} else {
 
 		rf.log = append(rf.log, LogEntry{Term: rf.currentTerm, Command: command})
-		index := len(rf.log) - 1
+		index := rf.getlastindex()
 		term := rf.currentTerm
 		rf.persist()
 		return index, term, true
@@ -364,7 +423,7 @@ func (rf *Raft) ticker() {
 				rf.mu.Unlock()
 			}
 		}
-		time.Sleep(time.Second / 40)
+		time.Sleep(time.Second / 30)
 	}
 }
 func (rf *Raft) appendticker() {
@@ -412,10 +471,16 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.state = Follower
 	rf.Refreshtime()
 	rf.currentTerm = 0
+	rf.base = 0
+	rf.lastterm = 0
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
+	if rf.base > 0 {
+		rf.lastApplied = rf.base
+	}
 	rf.applyChan = applyCh
-	// start ticker goroutine to start elections
+	// start ticker goroutine to start election
+
 	go rf.ticker()
 	go rf.appendticker()
 	go rf.committedTicker()
@@ -431,9 +496,8 @@ func (rf *Raft) leaderappend() {
 			continue
 		}
 		prevLogIndex := rf.nextindex[i] - 1
-		prevLogTerm := rf.log[prevLogIndex].Term
 		//fmt.Println(me, "sent heart to", i, "term:", currentTerm)
-		args := &AppendEntriesArgs{AppendEntries, currentTerm, me, prevLogIndex, prevLogTerm, nil, min(rf.commitindex, rf.matchindex[i])}
+		args := &AppendEntriesArgs{AppendEntries, currentTerm, me, prevLogIndex, 0, nil, min(rf.commitindex, rf.matchindex[i])}
 		reply := &AppendEntriesReply{}
 		go rf.SendAppendEntries(i, args, reply)
 	}
@@ -450,19 +514,20 @@ func (rf *Raft) committedTicker() {
 		}
 		//fmt.Println(rf.me, rf.lastApplied, rf.commitindex)
 		Messages := make([]ApplyMsg, 0)
-		for rf.lastApplied < rf.commitindex && rf.lastApplied < len(rf.log)-1 {
+		for rf.lastApplied < rf.commitindex && rf.lastApplied < rf.getlastindex() {
 			rf.lastApplied += 1
 			//fmt.Println(rf.me, "已经提交", rf.lastApplied, rf.log[rf.lastApplied].Command)
 			Messages = append(Messages, ApplyMsg{
 				CommandValid:  true,
 				SnapshotValid: false,
 				CommandIndex:  rf.lastApplied,
-				Command:       rf.log[rf.lastApplied].Command,
+				Command:       rf.getLog(rf.lastApplied).Command,
 			})
 		}
 		rf.mu.Unlock()
 
 		for _, messages := range Messages {
+			//fmt.Println(rf.me, "提交了", messages.Command)
 			rf.applyChan <- messages
 		}
 	}

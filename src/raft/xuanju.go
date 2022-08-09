@@ -22,8 +22,8 @@ func (rf *Raft) Xuanju() {
 			continue
 		}
 		//fmt.Println(me, "sent xuanju to", i, "term :", currentTerm)
-		lastLogIndex := len(rf.log) - 1
-		lastLogTerm := rf.log[lastLogIndex].Term
+		lastLogIndex := rf.getlastindex()
+		lastLogTerm := rf.getTerm(lastLogIndex)
 		go func(a int) {
 			arg := &RequestVoteArgs{currentTerm, me, lastLogIndex, lastLogTerm}
 			reply := &RequestVoteReply{}
@@ -61,7 +61,7 @@ func (rf *Raft) Xuanju() {
 
 			for i := 0; i < len(rf.peers); i++ {
 				rf.matchindex[i] = 0
-				rf.nextindex[i] = len(rf.log)
+				rf.nextindex[i] = rf.getlastindex() + 1
 			}
 			rf.Heartbeats()
 			rf.mu.Unlock()
