@@ -97,6 +97,7 @@ type Raft struct {
 	lastterm int
 
 	applyChan chan ApplyMsg
+	send      chan ApplyMsg
 }
 
 // return currentTerm and whether this server
@@ -337,6 +338,12 @@ func (rf *Raft) SendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	return ok
 }
+func (rf *Raft) GetLeader() int {
+	if rf.state == Leader {
+		return rf.me
+	}
+	return rf.votedFor
+}
 
 //
 // the service using Raft (e.g. a k/v server) wants to start
@@ -372,6 +379,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		index := rf.getlastindex()
 		term := rf.currentTerm
 		rf.persist()
+		rf.leaderappend()
 		return index, term, true
 	}
 	return index, term, isLeader
@@ -473,6 +481,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.currentTerm = 0
 	rf.base = 0
 	rf.lastterm = 0
+	rf.send = make(chan ApplyMsg, 500000)
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 	if rf.base > 0 {
@@ -484,6 +493,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	go rf.ticker()
 	go rf.appendticker()
 	go rf.committedTicker()
+	go rf.chanwork()
 	return rf
 }
 
@@ -505,7 +515,7 @@ func (rf *Raft) leaderappend() {
 func (rf *Raft) committedTicker() {
 	// put the committed entry to apply on the status machine
 	for rf.killed() == false {
-		time.Sleep(40 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
 		rf.mu.Lock()
 
 		if rf.lastApplied >= rf.commitindex {
@@ -513,23 +523,24 @@ func (rf *Raft) committedTicker() {
 			continue
 		}
 		//fmt.Println(rf.me, rf.lastApplied, rf.commitindex)
-		Messages := make([]ApplyMsg, 0)
 		for rf.lastApplied < rf.commitindex && rf.lastApplied < rf.getlastindex() {
 			rf.lastApplied += 1
 			//fmt.Println(rf.me, "已经提交", rf.lastApplied, rf.log[rf.lastApplied].Command)
-			Messages = append(Messages, ApplyMsg{
+			rf.send <- ApplyMsg{
 				CommandValid:  true,
 				SnapshotValid: false,
 				CommandIndex:  rf.lastApplied,
 				Command:       rf.getLog(rf.lastApplied).Command,
-			})
+			}
 		}
 		rf.mu.Unlock()
 
-		for _, messages := range Messages {
-			//fmt.Println(rf.me, "提交了", messages.Command)
-			rf.applyChan <- messages
-		}
 	}
 
+}
+func (rf *Raft) chanwork() {
+	for {
+		mes := <-rf.send
+		rf.applyChan <- mes
+	}
 }

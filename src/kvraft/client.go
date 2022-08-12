@@ -1,13 +1,19 @@
 package kvraft
 
-import "6.824/labrpc"
-import "crypto/rand"
-import "math/big"
+import (
+	"crypto/rand"
+	"math/big"
+	mathrand "math/rand"
 
+	"6.824/labrpc"
+)
 
 type Clerk struct {
 	servers []*labrpc.ClientEnd
 	// You will have to modify this struct.
+	seqId    int
+	leaderId int // 确定哪个服务器是leader，下次直接发送给该服务器
+	clientId int64
 }
 
 func nrand() int64 {
@@ -21,6 +27,8 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
 	// You'll have to add code here.
+	ck.clientId = nrand()
+	ck.leaderId = mathrand.Intn(len(ck.servers))
 	return ck
 }
 
@@ -39,7 +47,30 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 func (ck *Clerk) Get(key string) string {
 
 	// You will have to modify this function.
-	return ""
+	ck.seqId++
+	args := GetArgs{Key: key, ClientId: ck.clientId, SeqId: ck.seqId}
+	serverId := ck.leaderId
+	for {
+		reply := GetReply{}
+		ok := ck.servers[serverId].Call("KVServer.Get", &args, &reply)
+		if ok {
+			if reply.Err == ErrNoKey {
+				ck.leaderId = serverId
+				return ""
+			}
+			if reply.Err == OK {
+				ck.leaderId = serverId
+				return reply.Value
+			}
+			if reply.Err == ErrWrongLeader {
+
+				serverId = (serverId + 1) % len(ck.servers)
+
+				continue
+			}
+		}
+		serverId = (serverId + 1) % len(ck.servers)
+	}
 }
 
 //
@@ -54,6 +85,26 @@ func (ck *Clerk) Get(key string) string {
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
+	ck.seqId++
+	args := PutAppendArgs{Key: key, Value: value, Op: op, ClientId: ck.clientId, SeqId: ck.seqId}
+	serverId := ck.leaderId
+	for {
+		reply := PutAppendReply{}
+		ok := ck.servers[serverId].Call("KVServer.PutAppend", &args, &reply)
+		if ok {
+			if reply.Err == OK {
+				ck.leaderId = serverId
+				return
+			}
+			if reply.Err == ErrWrongLeader {
+
+				serverId = (serverId + 1) % len(ck.servers)
+
+				continue
+			}
+		}
+		serverId = (serverId + 1) % len(ck.servers)
+	}
 }
 
 func (ck *Clerk) Put(key string, value string) {
