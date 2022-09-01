@@ -68,7 +68,10 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	op := Op{OpType: "Get", Key: args.Key, SeqId: args.SeqId, ClientId: args.ClientId}
 	//fmt.Printf("[ ----Server[%v]----] : send a Get,op is :%+v \n", kv.me, op)
 	lastIndex, _, _ := kv.rf.Start(op)
-
+	if lastIndex == -1 {
+		reply.Err = ErrWrongLeader
+		return
+	}
 	ch := kv.getWaitCh(lastIndex)
 	op.Index = lastIndex
 	defer func() {
@@ -305,6 +308,5 @@ func (kv *KVServer) DecodeSnapShot(snapshot []byte) {
 		kv.seqMap = seqMap
 	} else {
 		fmt.Printf("[Server(%v)] Failed to decode snapshot！！！", kv.me)
-
 	}
 }

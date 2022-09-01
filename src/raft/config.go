@@ -239,7 +239,6 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 			if m.CommandIndex != cfg.lastApplied[i]+1 {
 				fmt.Println(m.CommandIndex, cfg.lastApplied[i]+1)
 			}
-
 			if err_msg == "" {
 				cfg.mu.Lock()
 				var prevok bool
