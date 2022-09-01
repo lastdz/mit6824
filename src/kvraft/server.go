@@ -63,7 +63,6 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	_, ifLeader := kv.rf.GetState()
 	if !ifLeader {
 		reply.Err = ErrWrongLeader
-		reply.Leader = kv.rf.GetLeader()
 		return
 	}
 	op := Op{OpType: "Get", Key: args.Key, SeqId: args.SeqId, ClientId: args.ClientId}
@@ -109,7 +108,6 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	_, ifLeader := kv.rf.GetState()
 	if !ifLeader {
 		reply.Err = ErrWrongLeader
-		reply.Leader = kv.rf.GetLeader()
 		return
 	}
 
@@ -158,7 +156,7 @@ func (kv *KVServer) applyMsgHandlerLoop() {
 				if msg.CommandIndex <= kv.lastIncludeIndex {
 					return
 				}
-
+				//fmt.Println("cmd", msg.CommandIndex)
 				index := msg.CommandIndex
 				op := msg.Command.(Op)
 				if !kv.ifDuplicate(op.ClientId, op.SeqId) {
@@ -174,11 +172,11 @@ func (kv *KVServer) applyMsgHandlerLoop() {
 				}
 
 				// 将返回的ch返回waitCh
-				kv.getWaitCh(index) <- op
 				if kv.maxraftstate != -1 && kv.rf.GetRaftStateSize() > kv.maxraftstate {
 					snapshot := kv.PersistSnapShot()
 					kv.rf.Snapshot(msg.CommandIndex, snapshot)
 				}
+				kv.getWaitCh(index) <- op
 			}
 			if msg.SnapshotValid {
 				kv.mu.Lock()
@@ -187,6 +185,7 @@ func (kv *KVServer) applyMsgHandlerLoop() {
 					// 读取快照的数据
 					kv.DecodeSnapShot(msg.Snapshot)
 					kv.lastIncludeIndex = msg.SnapshotIndex
+					//fmt.Println("snap", msg.SnapshotIndex)
 				}
 				kv.mu.Unlock()
 			}

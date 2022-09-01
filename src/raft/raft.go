@@ -107,6 +107,8 @@ func (rf *Raft) GetState() (int, bool) {
 	var term int
 	var isleader bool
 	// Your code here (2A).
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	term = rf.currentTerm
 	isleader = rf.state == Leader
 	return term, isleader
@@ -493,7 +495,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	go rf.ticker()
 	go rf.appendticker()
 	go rf.committedTicker()
-	go rf.chanwork()
 	return rf
 }
 
@@ -523,24 +524,22 @@ func (rf *Raft) committedTicker() {
 			continue
 		}
 		//fmt.Println(rf.me, rf.lastApplied, rf.commitindex)
+		arr := make([]ApplyMsg, 0)
 		for rf.lastApplied < rf.commitindex && rf.lastApplied < rf.getlastindex() {
 			rf.lastApplied += 1
+			//fmt.Println(rf.me, "提交了", rf.lastApplied)
 			//fmt.Println(rf.me, "已经提交", rf.lastApplied, rf.log[rf.lastApplied].Command)
-			rf.send <- ApplyMsg{
+			arr = append(arr, ApplyMsg{
 				CommandValid:  true,
 				SnapshotValid: false,
 				CommandIndex:  rf.lastApplied,
 				Command:       rf.getLog(rf.lastApplied).Command,
-			}
+			})
 		}
 		rf.mu.Unlock()
-
+		for _, msg := range arr {
+			rf.applyChan <- msg
+		}
 	}
 
-}
-func (rf *Raft) chanwork() {
-	for {
-		mes := <-rf.send
-		rf.applyChan <- mes
-	}
 }
