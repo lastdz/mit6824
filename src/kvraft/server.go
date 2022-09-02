@@ -54,7 +54,6 @@ type KVServer struct {
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
-	reply.Leader = -1
 	if kv.killed() {
 		reply.Err = ErrWrongLeader
 		return
@@ -101,7 +100,6 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
-	reply.Leader = -1
 	// Your code here.
 	if kv.killed() {
 		reply.Err = ErrWrongLeader
@@ -177,16 +175,31 @@ func (kv *KVServer) applyMsgHandlerLoop() {
 				// 将返回的ch返回waitCh
 				if kv.maxraftstate != -1 && kv.rf.GetRaftStateSize() > kv.maxraftstate {
 					snapshot := kv.PersistSnapShot()
+					if Debug {
+						log.Println(kv.me, "snap")
+						log.Println(kv.me, kv.kvPersist)
+					}
+
 					kv.rf.Snapshot(msg.CommandIndex, snapshot)
 				}
 				kv.getWaitCh(index) <- op
 			}
 			if msg.SnapshotValid {
 				kv.mu.Lock()
+				if msg.SnapshotIndex <= kv.lastIncludeIndex {
+					kv.mu.Unlock()
+					continue
+				}
 				// 判断此时有没有竞争
 				if kv.rf.CondInstallSnapshot(msg.SnapshotTerm, msg.SnapshotIndex, msg.Snapshot) {
 					// 读取快照的数据
+					if Debug {
+						log.Println(kv.me, "installsnap")
+						log.Println(kv.kvPersist)
+					}
+
 					kv.DecodeSnapShot(msg.Snapshot)
+
 					kv.lastIncludeIndex = msg.SnapshotIndex
 					//fmt.Println("snap", msg.SnapshotIndex)
 				}

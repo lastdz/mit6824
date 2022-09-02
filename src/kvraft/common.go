@@ -16,24 +16,22 @@ type PutAppendArgs struct {
 	// You'll have to add definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
-	ClientId int64
-	SeqId    int
+	SeqId    int   // 操作的唯一标识
+	ClientId int64 // 客户端Id
 }
 
 type PutAppendReply struct {
-	Err    Err
-	Leader int
+	Err Err
 }
 
 type GetArgs struct {
 	Key string
 	// You'll have to add definitions here.
-	ClientId int64
 	SeqId    int
+	ClientId int64
 }
 
 type GetReply struct {
-	Err    Err
-	Value  string
-	Leader int
+	Err   Err
+	Value string
 }

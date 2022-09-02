@@ -179,14 +179,6 @@ func (rf *Raft) readPersist(data []byte) {
 func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
 
 	// Your code here (2D).
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	if rf.lastApplied > lastIncludedIndex {
-		return false
-	}
-	if rf.currentTerm != lastIncludedTerm {
-		return false
-	}
 	return true
 }
 
@@ -213,35 +205,6 @@ func (rf *Raft) getTerm(index int) int {
 		return rf.lastterm
 	}
 	return rf.log[index-rf.base].Term
-}
-func (rf *Raft) Snapshot(index int, snapshot []byte) {
-	// Your code here (2D).
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	if index <= rf.base || index > rf.commitindex {
-		return
-	}
-	Log := make([]LogEntry, 0)
-	Log = append(Log, LogEntry{0, 0})
-	for i := index + 1; i <= rf.getlastindex(); i++ {
-		Log = append(Log, rf.getLog(i))
-	}
-	if index == rf.getlastindex() {
-		rf.lastterm = rf.getlastTerm()
-	} else {
-		rf.lastterm = rf.getTerm(index)
-	}
-	//fmt.Println(rf.me, "快照", rf.log)
-	rf.base = index
-	rf.log = Log
-	//fmt.Println(rf.log)
-	if index > rf.commitindex {
-		rf.commitindex = index
-	}
-	if index > rf.lastApplied {
-		rf.lastApplied = index
-	}
-	rf.persister.SaveStateAndSnapshot(rf.persistData(), snapshot)
 }
 
 //

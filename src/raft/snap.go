@@ -14,12 +14,18 @@ type InstallSnapshotReply struct {
 
 func (rf *Raft) InstallSnapShot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
 	rf.mu.Lock()
-	reply.Term = rf.currentTerm
 	if rf.currentTerm > args.Term {
+		reply.Term = rf.currentTerm
 		rf.mu.Unlock()
 		return
 	}
 	if rf.currentTerm < args.Term {
+		rf.Refresh(args.Term)
+		rf.votedFor = args.LeaderID
+		rf.persist()
+	}
+	reply.Term = rf.currentTerm
+	if rf.state != Follower {
 		rf.Refresh(args.Term)
 		rf.votedFor = args.LeaderID
 		rf.persist()
@@ -59,12 +65,39 @@ func (rf *Raft) InstallSnapShot(args *InstallSnapshotArgs, reply *InstallSnapsho
 		SnapshotTerm:  rf.lastterm,
 		SnapshotIndex: rf.base,
 	}
-	rf.mu.Unlock()
-	rf.applyChan <- msg
-	rf.mu.Lock()
+
 	rf.persister.SaveStateAndSnapshot(rf.persistData(), args.Data)
 	rf.mu.Unlock()
-
+	rf.applyChan <- msg
+}
+func (rf *Raft) Snapshot(index int, snapshot []byte) {
+	// Your code here (2D).
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if index <= rf.base || index > rf.commitindex {
+		return
+	}
+	Log := make([]LogEntry, 0)
+	Log = append(Log, LogEntry{0, 0})
+	for i := index + 1; i <= rf.getlastindex(); i++ {
+		Log = append(Log, rf.getLog(i))
+	}
+	if index == rf.getlastindex() {
+		rf.lastterm = rf.getlastTerm()
+	} else {
+		rf.lastterm = rf.getTerm(index)
+	}
+	//fmt.Println(rf.me, "快照", rf.log)
+	rf.base = index
+	rf.log = Log
+	//fmt.Println(rf.log)
+	if index > rf.commitindex {
+		rf.commitindex = index
+	}
+	if index > rf.lastApplied {
+		rf.lastApplied = index
+	}
+	rf.persister.SaveStateAndSnapshot(rf.persistData(), snapshot)
 }
 func (rf *Raft) sendSnapShot(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply) bool {
 	ok := rf.peers[server].Call("Raft.InstallSnapShot", args, reply)
