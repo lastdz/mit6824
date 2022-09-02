@@ -444,6 +444,11 @@ func (rf *Raft) ticker() {
 		time.Sleep(time.Second / 30)
 	}
 }
+func (rf *Raft) Getlog() []LogEntry {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.log
+}
 func (rf *Raft) appendticker() {
 	for rf.killed() == false {
 		time.Sleep(40 * time.Millisecond)

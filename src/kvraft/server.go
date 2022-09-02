@@ -255,11 +255,9 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	if len(snapshot) > 0 {
 		kv.DecodeSnapShot(snapshot)
 	}
-
 	go kv.applyMsgHandlerLoop()
 	return kv
 }
-
 func (kv *KVServer) getWaitCh(index int) chan Op {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
