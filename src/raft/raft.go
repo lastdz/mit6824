@@ -184,6 +184,9 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 	if rf.lastApplied > lastIncludedIndex {
 		return false
 	}
+	if rf.currentTerm != lastIncludedTerm {
+		return false
+	}
 	return true
 }
 
