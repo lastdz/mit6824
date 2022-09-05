@@ -23,9 +23,10 @@ const NShards = 10
 // A configuration -- an assignment of shards to groups.
 // Please don't change this.
 type Config struct {
-	Shards [NShards]int
 	Num    int              // config number
 	Groups map[int][]string // gid -> servers[]
+
+	Shards [NShards]int
 }
 
 const (
