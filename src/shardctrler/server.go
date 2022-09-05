@@ -42,6 +42,10 @@ func (sc *ShardCtrler) Kill() {
 }
 func (sc *ShardCtrler) Join(args *JoinArgs, reply *JoinReply) {
 	// Your code here.
+	if sc.rf.Killed() {
+		reply.Err = "ErrKilled"
+		return
+	}
 	_, ifLeader := sc.rf.GetState()
 	if !ifLeader {
 		reply.WrongLeader = true
@@ -89,6 +93,10 @@ func (sc *ShardCtrler) createNextConfig() Config {
 func (sc *ShardCtrler) Leave(args *LeaveArgs, reply *LeaveReply) {
 	// Your code here.
 	// Your code here.
+	if sc.rf.Killed() {
+		reply.Err = "ErrKilled"
+		return
+	}
 	_, ifLeader := sc.rf.GetState()
 	if !ifLeader {
 		reply.WrongLeader = true
@@ -127,6 +135,10 @@ func (sc *ShardCtrler) Leave(args *LeaveArgs, reply *LeaveReply) {
 
 func (sc *ShardCtrler) Move(args *MoveArgs, reply *MoveReply) {
 	// Your code here.
+	if sc.rf.Killed() {
+		reply.Err = "ErrKilled"
+		return
+	}
 	_, ifLeader := sc.rf.GetState()
 	if !ifLeader {
 		reply.WrongLeader = true
@@ -164,6 +176,10 @@ func (sc *ShardCtrler) Move(args *MoveArgs, reply *MoveReply) {
 
 func (sc *ShardCtrler) Query(args *QueryArgs, reply *QueryReply) {
 	// Your code here.
+	if sc.rf.Killed() {
+		reply.Err = "ErrKilled"
+		return
+	}
 	_, ifLeader := sc.rf.GetState()
 	if !ifLeader {
 		reply.WrongLeader = true

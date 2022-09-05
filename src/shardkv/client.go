@@ -76,6 +76,7 @@ func MakeClerk(ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 func (ck *Clerk) Get(key string) string {
 	ck.SeqId++
 	for {
+		//fmt.Println("start get")
 		args := GetArgs{key, ck.SeqId, ck.ClientId}
 		args.Key = key
 		shard := key2shard(key)
@@ -88,6 +89,7 @@ func (ck *Clerk) Get(key string) string {
 				var reply GetReply
 				ok := srv.Call("ShardKV.Get", &args, &reply)
 				if ok && (reply.Err == OK || reply.Err == ErrNoKey) {
+					//fmt.Println("return")
 					return reply.Value
 				}
 				if ok && (reply.Err == ErrWrongGroup) {

@@ -18,6 +18,7 @@ const (
 	ConfigNotArrived    = "ConfigNotArrived"
 	ErrInconsistentData = "ErrInconsistentData"
 	ErrOverTime         = "ErrOverTime"
+	ErrKilled           = "ErrKilled"
 )
 
 type Err string

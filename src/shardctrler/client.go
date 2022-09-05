@@ -46,9 +46,12 @@ func (ck *Clerk) Query(num int) Config {
 		args := &QueryArgs{Num: num, ClientId: ck.clientId, SeqId: ck.seqId}
 		reply := &QueryReply{}
 		res := ck.servers[ck.leaderId].Call("ShardCtrler.Query", args, reply)
-		//fmt.Println(ck.leaderId, res, reply.WrongLeader)
+		//fmt.Println(res, reply.WrongLeader)
 		if res && !reply.WrongLeader {
 			return reply.Config
+		}
+		if res && reply.Err == "ErrKilled" {
+			ck.seqId++
 		}
 		if res && reply.Err == "TimeOut" {
 			ck.seqId++
@@ -70,6 +73,9 @@ func (ck *Clerk) Join(servers map[int][]string) {
 		res := ck.servers[ck.leaderId].Call("ShardCtrler.Join", args, reply)
 		//fmt.Println("join", ck.leaderId, res, reply.WrongLeader)
 		if res && !reply.WrongLeader {
+			return
+		}
+		if res && reply.Err == "ErrKilled" {
 			return
 		}
 		if res && reply.Err == "TimeOut" {
@@ -94,6 +100,9 @@ func (ck *Clerk) Leave(gids []int) {
 		if res && !reply.WrongLeader {
 			return
 		}
+		if res && reply.Err == "ErrKilled" {
+			//return
+		}
 		if res && reply.Err == "TimeOut" {
 			ck.seqId++
 		}
@@ -114,6 +123,9 @@ func (ck *Clerk) Move(shard int, gid int) {
 		res := ck.servers[ck.leaderId].Call("ShardCtrler.Move", args, reply)
 		//fmt.Println("move", ck.leaderId, res, reply.WrongLeader)
 		if res && !reply.WrongLeader {
+			return
+		}
+		if res && reply.Err == "ErrKilled" {
 			return
 		}
 		if res && reply.Err == "TimeOut" {

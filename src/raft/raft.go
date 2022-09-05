@@ -332,6 +332,9 @@ func (rf *Raft) GetLeader() int {
 // term. the third return value is true if this server believes it is
 // the leader.
 //
+func (rf *Raft) Killed() bool {
+	return rf.killed()
+}
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index := -1
 	term := -1

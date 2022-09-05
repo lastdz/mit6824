@@ -258,7 +258,7 @@ func (kv *ShardKV) ConfigDetectedLoop() {
 	curConfig := kv.Config
 	rf := kv.rf
 	kv.mu.Unlock()
-
+	//start := time.Now()
 	for !kv.killed() {
 		// only leader needs to deal with configuration tasks
 		if _, isLeader := rf.GetState(); !isLeader {
@@ -268,6 +268,7 @@ func (kv *ShardKV) ConfigDetectedLoop() {
 		kv.mu.Lock()
 		// 判断是否把不属于自己的部分给分给别人了
 		if !kv.allSent() {
+			//fmt.Println(kv.Config.Num)
 			SeqMap := make(map[int64]int)
 			for k, v := range kv.SeqMap {
 				SeqMap[k] = v
@@ -351,6 +352,32 @@ func (kv *ShardKV) ConfigDetectedLoop() {
 			continue
 		}
 		if !kv.allReceived() {
+			//fmt.Println("rrr")
+			if false {
+				//start = time.Now()
+				sck := kv.sck
+				curConfig = kv.Config
+				newConfig := sck.Query(curConfig.Num + 1)
+				//fmt.Println(newConfig.Num, curConfig.Num)
+				if newConfig.Num != curConfig.Num+1 {
+					if De {
+						fmt.Println(kv.me, newConfig.Num, " ", curConfig.Num)
+					}
+					kv.mu.Unlock()
+					time.Sleep(UpConfigLoopInterval)
+					continue
+				}
+				command := Op{
+					OpType:   "UpConfig",
+					ClientId: int64(kv.gid),
+					SeqId:    newConfig.Num,
+					UpConfig: newConfig,
+				}
+				kv.mu.Unlock()
+				//fmt.Println(newConfig.Num)
+				kv.startCommand(command, UpConfigTimeout)
+				continue
+			}
 			if De {
 				//fmt.Println("noreceived")
 			}
