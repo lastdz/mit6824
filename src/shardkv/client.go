@@ -8,11 +8,14 @@ package shardkv
 // talks to the group that holds the key's shard.
 //
 
-import "6.824/labrpc"
-import "crypto/rand"
-import "math/big"
-import "6.824/shardctrler"
-import "time"
+import (
+	"crypto/rand"
+	"math/big"
+	"time"
+
+	"6.824/labrpc"
+	"6.824/shardctrler"
+)
 
 //
 // which shard is a key in?
@@ -40,6 +43,8 @@ type Clerk struct {
 	config   shardctrler.Config
 	make_end func(string) *labrpc.ClientEnd
 	// You will have to modify this struct.
+	SeqId    int
+	ClientId int64
 }
 
 //
@@ -56,6 +61,9 @@ func MakeClerk(ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 	ck.sm = shardctrler.MakeClerk(ctrlers)
 	ck.make_end = make_end
 	// You'll have to add code here.
+	ck.ClientId = nrand()
+	ck.SeqId = 0
+	ck.config = ck.sm.Query(-1)
 	return ck
 }
 
@@ -66,12 +74,13 @@ func MakeClerk(ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 // You will have to modify this function.
 //
 func (ck *Clerk) Get(key string) string {
-	args := GetArgs{}
-	args.Key = key
-
+	ck.SeqId++
 	for {
+		args := GetArgs{key, ck.SeqId, ck.ClientId}
+		args.Key = key
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
+		//fmt.Println(gid)
 		if servers, ok := ck.config.Groups[gid]; ok {
 			// try each server for the shard.
 			for si := 0; si < len(servers); si++ {
@@ -83,6 +92,9 @@ func (ck *Clerk) Get(key string) string {
 				}
 				if ok && (reply.Err == ErrWrongGroup) {
 					break
+				}
+				if ok && (reply.Err == ErrOverTime) {
+					ck.SeqId++
 				}
 				// ... not ok, or ErrWrongLeader
 			}
@@ -100,32 +112,42 @@ func (ck *Clerk) Get(key string) string {
 // You will have to modify this function.
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
-	args := PutAppendArgs{}
-	args.Key = key
-	args.Value = value
-	args.Op = op
-
+	ck.SeqId++
 
 	for {
+		args := PutAppendArgs{}
+		args.Key = key
+		args.Value = value
+		args.Op = op
+		args.SeqId = ck.SeqId
+		args.ClientId = ck.ClientId
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
+		//fmt.Println(gid)
 		if servers, ok := ck.config.Groups[gid]; ok {
 			for si := 0; si < len(servers); si++ {
 				srv := ck.make_end(servers[si])
 				var reply PutAppendReply
+				//fmt.Println(1)
 				ok := srv.Call("ShardKV.PutAppend", &args, &reply)
+				//fmt.Println(2)
 				if ok && reply.Err == OK {
 					return
 				}
 				if ok && reply.Err == ErrWrongGroup {
 					break
 				}
+				if ok && (reply.Err == ErrOverTime) {
+					ck.SeqId++
+				}
 				// ... not ok, or ErrWrongLeader
 			}
 		}
 		time.Sleep(100 * time.Millisecond)
 		// ask controler for the latest configuration.
+		//fmt.Println(1)
 		ck.config = ck.sm.Query(-1)
+		//fmt.Println(2)
 	}
 }
 

@@ -1,19 +1,55 @@
 package shardkv
 
+import (
+	"bytes"
+	"fmt"
+	"log"
+	"sync"
+	"sync/atomic"
+	"time"
 
-import "6.824/labrpc"
-import "6.824/raft"
-import "sync"
-import "6.824/labgob"
+	"6.824/labgob"
+	"6.824/labrpc"
+	"6.824/raft"
+	"6.824/shardctrler"
+)
 
+const (
+	De = false
+)
+const (
+	UpConfigLoopInterval = 100 * time.Millisecond // poll configuration period
 
+	GetTimeout          = 500 * time.Millisecond
+	AppOrPutTimeout     = 500 * time.Millisecond
+	UpConfigTimeout     = 500 * time.Millisecond
+	AddShardsTimeout    = 500 * time.Millisecond
+	RemoveShardsTimeout = 500 * time.Millisecond
+)
 
+type Shard struct {
+	KvMap     map[string]string
+	ConfigNum int // what version this Shard is in
+}
 type Op struct {
 	// Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+	ClientId int64
+	SeqId    int
+	OpType   string // "get" "put" "append"
+	Key      string
+	Value    string
+	UpConfig shardctrler.Config
+	ShardId  int
+	Shard    Shard
+	SeqMap   map[int64]int
 }
-
+type OpReply struct {
+	ClientId int64
+	SeqId    int
+	Err      Err
+}
 type ShardKV struct {
 	mu           sync.Mutex
 	me           int
@@ -25,15 +61,120 @@ type ShardKV struct {
 	maxraftstate int // snapshot if log grows this big
 
 	// Your definitions here.
+	dead int32 // set by Kill()
+
+	Config     shardctrler.Config // 需要更新的最新的配置
+	LastConfig shardctrler.Config // 更新之前的配置，用于比对是否全部更新完了
+
+	shardsPersist []Shard // ShardId -> Shard 如果KvMap == nil则说明当前的数据不归当前分片管
+	waitChMap     map[int]chan OpReply
+	SeqMap        map[int64]int
+	sck           *shardctrler.Clerk // sck is a client used to contact shard master
 }
 
+func (kv *ShardKV) startCommand(command Op, timeoutPeriod time.Duration) Err {
+	kv.mu.Lock()
+	index, _, isLeader := kv.rf.Start(command)
+	if !isLeader {
+		kv.mu.Unlock()
+		return ErrWrongLeader
+	}
 
+	ch := kv.getWaitCh(index)
+	kv.mu.Unlock()
+
+	timer := time.NewTicker(timeoutPeriod)
+	defer timer.Stop()
+
+	select {
+	case re := <-ch:
+		kv.mu.Lock()
+		delete(kv.waitChMap, index)
+		if re.SeqId != command.SeqId || re.ClientId != command.ClientId {
+			// One way to do this is for the server to detect that it has lost leadership,
+			// by noticing that a different request has appeared at the index returned by Start()
+			kv.mu.Unlock()
+			return ErrInconsistentData
+		}
+		kv.mu.Unlock()
+		return re.Err
+
+	case <-timer.C:
+		return ErrOverTime
+	}
+}
 func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
+	shardId := key2shard(args.Key)
+	kv.mu.Lock()
+	if kv.Config.Shards[shardId] != kv.gid {
+		reply.Err = ErrWrongGroup
+	} else if kv.shardsPersist[shardId].KvMap == nil {
+		reply.Err = ShardNotArrived
+	}
+	kv.mu.Unlock()
+	if reply.Err == ErrWrongGroup || reply.Err == ShardNotArrived {
+		return
+	}
+	command := Op{
+		OpType:   "Get",
+		ClientId: args.ClientId,
+		SeqId:    args.SeqId,
+		Key:      args.Key,
+	}
+	err := kv.startCommand(command, GetTimeout)
+	if err != OK {
+		reply.Err = err
+		return
+	}
+	kv.mu.Lock()
+
+	if kv.Config.Shards[shardId] != kv.gid {
+		reply.Err = ErrWrongGroup
+	} else if kv.shardsPersist[shardId].KvMap == nil {
+		reply.Err = ShardNotArrived
+	} else {
+		reply.Err = OK
+		reply.Value = kv.shardsPersist[shardId].KvMap[args.Key]
+	}
+	kv.mu.Unlock()
+	return
 }
 
 func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
+	shardId := key2shard(args.Key)
+	kv.mu.Lock()
+	if kv.Config.Shards[shardId] != kv.gid {
+		reply.Err = ErrWrongGroup
+	} else if kv.shardsPersist[shardId].KvMap == nil {
+		reply.Err = ShardNotArrived
+	}
+	kv.mu.Unlock()
+	if reply.Err == ErrWrongGroup || reply.Err == ShardNotArrived {
+		return
+	}
+	command := Op{
+		OpType:   args.Op,
+		ClientId: args.ClientId,
+		SeqId:    args.SeqId,
+		Key:      args.Key,
+		Value:    args.Value,
+	}
+	reply.Err = kv.startCommand(command, AppOrPutTimeout)
+	return
+}
+func (kv *ShardKV) AddShard(args *SendShardArg, reply *AddShardReply) {
+	command := Op{
+		OpType:   "AddShard",
+		ClientId: args.ClientId,
+		SeqId:    args.RequestId,
+		ShardId:  args.ShardId,
+		Shard:    args.Shard,
+		SeqMap:   args.LastAppliedRequestId,
+	}
+	reply.Err = kv.startCommand(command, AddShardsTimeout)
+	return
 }
 
 //
@@ -45,8 +186,8 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 func (kv *ShardKV) Kill() {
 	kv.rf.Kill()
 	// Your code here, if desired.
+	atomic.StoreInt32(&kv.dead, 1)
 }
-
 
 //
 // servers[] contains the ports of the servers in this group.
@@ -89,13 +230,394 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	kv.ctrlers = ctrlers
 
 	// Your initialization code here.
+	kv.shardsPersist = make([]Shard, shardctrler.NShards)
 
+	kv.SeqMap = make(map[int64]int)
 	// Use something like this to talk to the shardctrler:
 	// kv.mck = shardctrler.MakeClerk(kv.ctrlers)
+	kv.sck = shardctrler.MakeClerk(kv.ctrlers)
+	kv.waitChMap = make(map[int]chan OpReply)
 
+	snapshot := persister.ReadSnapshot()
+	if len(snapshot) > 0 {
+		kv.DecodeSnapShot(snapshot)
+	}
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
-
-
+	go kv.applyMsgHandlerLoop()
+	go kv.ConfigDetectedLoop()
 	return kv
+}
+func (kv *ShardKV) killed() bool {
+	z := atomic.LoadInt32(&kv.dead)
+	return z == 1
+}
+func (kv *ShardKV) ConfigDetectedLoop() {
+	kv.mu.Lock()
+
+	curConfig := kv.Config
+	rf := kv.rf
+	kv.mu.Unlock()
+
+	for !kv.killed() {
+		// only leader needs to deal with configuration tasks
+		if _, isLeader := rf.GetState(); !isLeader {
+			time.Sleep(UpConfigLoopInterval)
+			continue
+		}
+		kv.mu.Lock()
+		// 判断是否把不属于自己的部分给分给别人了
+		if !kv.allSent() {
+			SeqMap := make(map[int64]int)
+			for k, v := range kv.SeqMap {
+				SeqMap[k] = v
+			}
+			for shardId, gid := range kv.LastConfig.Shards {
+
+				// 将最新配置里不属于自己的分片分给别人
+				if gid == kv.gid && kv.Config.Shards[shardId] != kv.gid && kv.shardsPersist[shardId].ConfigNum < kv.Config.Num {
+
+					sendDate := kv.cloneShard(kv.Config.Num, kv.shardsPersist[shardId].KvMap)
+
+					args := SendShardArg{
+						LastAppliedRequestId: SeqMap,
+						ShardId:              shardId,
+						Shard:                sendDate,
+						ClientId:             int64(gid),
+						RequestId:            kv.Config.Num,
+					}
+
+					// shardId -> gid -> server names
+					serversList := kv.Config.Groups[kv.Config.Shards[shardId]]
+					servers := make([]*labrpc.ClientEnd, len(serversList))
+					for i, name := range serversList {
+						servers[i] = kv.make_end(name)
+					}
+
+					// 开启协程对每个客户端发送切片(这里发送的应是别的组别，自身的共识组需要raft进行状态修改）
+					go func(servers []*labrpc.ClientEnd, args *SendShardArg) {
+
+						index := 0
+
+						for {
+							f := 0
+							var reply AddShardReply
+							start := time.Now()
+							// 对自己的共识组内进行add
+							ok := servers[index].Call("ShardKV.AddShard", args, &reply)
+
+							// 如果给予切片成功，或者时间超时，这两种情况都需要进行GC掉不属于自己的切片
+							if ok && reply.Err == OK || time.Now().Sub(start) >= 5*time.Second {
+
+								// 如果成功
+								if ok && reply.Err == OK {
+									if f == 1 {
+										break
+									}
+									kv.mu.Lock()
+									command := Op{
+										OpType:   "RemoveShard",
+										ClientId: int64(kv.gid),
+										SeqId:    kv.Config.Num,
+										ShardId:  args.ShardId,
+									}
+									kv.mu.Unlock()
+									kv.startCommand(command, RemoveShardsTimeout)
+									break
+								} else if f == 0 {
+									f = 1
+									kv.mu.Lock()
+									command := Op{
+										OpType:   "RemoveShard",
+										ClientId: int64(kv.gid),
+										SeqId:    kv.Config.Num,
+										ShardId:  args.ShardId,
+									}
+									kv.mu.Unlock()
+									kv.startCommand(command, RemoveShardsTimeout)
+								}
+
+							}
+							index = (index + 1) % len(servers)
+							if index == 0 {
+								time.Sleep(UpConfigLoopInterval)
+							}
+						}
+					}(servers, &args)
+				}
+			}
+			kv.mu.Unlock()
+			time.Sleep(UpConfigLoopInterval)
+			continue
+		}
+		if !kv.allReceived() {
+			if De {
+				//fmt.Println("noreceived")
+			}
+
+			kv.mu.Unlock()
+			time.Sleep(UpConfigLoopInterval)
+			continue
+		}
+
+		// current configuration is configured, poll for the next configuration
+		curConfig = kv.Config
+		sck := kv.sck
+		kv.mu.Unlock()
+
+		newConfig := sck.Query(curConfig.Num + 1)
+		if newConfig.Num != curConfig.Num+1 {
+			if De {
+				fmt.Println(kv.me, newConfig.Num, " ", curConfig.Num)
+			}
+			time.Sleep(UpConfigLoopInterval)
+			continue
+		}
+		if De {
+			fmt.Println("start upconfig:    ", kv.gid, newConfig.Num)
+		}
+		command := Op{
+			OpType:   "UpConfig",
+			ClientId: int64(kv.gid),
+			SeqId:    newConfig.Num,
+			UpConfig: newConfig,
+		}
+		kv.startCommand(command, UpConfigTimeout)
+	}
+
+}
+func (kv *ShardKV) applyMsgHandlerLoop() {
+	for {
+		if kv.killed() {
+			return
+		}
+		select {
+
+		case msg := <-kv.applyCh:
+
+			if msg.CommandValid == true {
+				kv.mu.Lock()
+				op := msg.Command.(Op)
+				//.Println(op.OpType, "    ", op.ClientId, "   ", op.SeqId, "    ", kv.SeqMap[op.ClientId])
+				if De {
+					fmt.Println("get:    ", op.OpType, op.ClientId, "   ", op.SeqId)
+				}
+				reply := OpReply{
+					ClientId: op.ClientId,
+					SeqId:    op.SeqId,
+					Err:      OK,
+				}
+
+				if op.OpType == "Put" || op.OpType == "Get" || op.OpType == "Append" {
+
+					shardId := key2shard(op.Key)
+
+					//
+					if kv.Config.Shards[shardId] != kv.gid {
+						reply.Err = ErrWrongGroup
+					} else if kv.shardsPersist[shardId].KvMap == nil {
+						// 如果应该存在的切片没有数据那么这个切片就还没到达
+						reply.Err = ShardNotArrived
+					} else {
+
+						if !kv.ifDuplicate(op.ClientId, op.SeqId) {
+
+							kv.SeqMap[op.ClientId] = op.SeqId
+							switch op.OpType {
+							case "Put":
+								kv.shardsPersist[shardId].KvMap[op.Key] = op.Value
+							case "Append":
+								kv.shardsPersist[shardId].KvMap[op.Key] += op.Value
+							case "Get":
+								// 如果是Get都不用做
+							default:
+								log.Fatalf("invalid command type: %v.", op.OpType)
+							}
+						}
+					}
+				} else {
+					// request from server of other group
+					switch op.OpType {
+
+					case "UpConfig":
+						if De {
+							fmt.Println("done:    ", op.OpType, op.ClientId, "   ", op.SeqId)
+						}
+						kv.upConfigHandler(op)
+					case "AddShard":
+
+						// 如果配置号比op的SeqId还低说明不是最新的配置
+						if kv.Config.Num < op.SeqId {
+							reply.Err = ConfigNotArrived
+							break
+						}
+						if De {
+							fmt.Println("done:    ", op.OpType, op.ClientId, "   ", op.SeqId)
+						}
+						kv.addShardHandler(op)
+					case "RemoveShard":
+						// remove operation is from previous UpConfig
+						if De {
+							fmt.Println("done:    ", op.OpType, op.ClientId, "   ", op.SeqId)
+						}
+						kv.removeShardHandler(op)
+					default:
+						log.Fatalf("invalid command type: %v.", op.OpType)
+					}
+				}
+
+				// 如果需要snapshot，且超出其stateSize
+				if kv.maxraftstate != -1 && kv.rf.GetRaftStateSize() > kv.maxraftstate {
+					snapshot := kv.PersistSnapShot()
+					kv.rf.Snapshot(msg.CommandIndex, snapshot)
+				}
+
+				ch := kv.getWaitCh(msg.CommandIndex)
+
+				ch <- reply
+				kv.mu.Unlock()
+
+			}
+
+			if msg.SnapshotValid == true {
+				if kv.rf.CondInstallSnapshot(msg.SnapshotTerm, msg.SnapshotIndex, msg.Snapshot) {
+					// 读取快照的数据
+					kv.mu.Lock()
+					kv.DecodeSnapShot(msg.Snapshot)
+					kv.mu.Unlock()
+				}
+				continue
+			}
+
+		}
+	}
+
+}
+func (kv *ShardKV) PersistSnapShot() []byte {
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	err := e.Encode(kv.shardsPersist)
+	err = e.Encode(kv.SeqMap)
+	err = e.Encode(kv.maxraftstate)
+	err = e.Encode(kv.Config)
+	err = e.Encode(kv.LastConfig)
+	if err != nil {
+		log.Fatalf("[%d-%d] fails to take snapshot.", kv.gid, kv.me)
+	}
+	return w.Bytes()
+}
+func (kv *ShardKV) DecodeSnapShot(snapshot []byte) {
+	if snapshot == nil || len(snapshot) < 1 { // bootstrap without any state?
+		return
+	}
+	r := bytes.NewBuffer(snapshot)
+	d := labgob.NewDecoder(r)
+
+	var shardsPersist []Shard
+	var SeqMap map[int64]int
+	var MaxRaftState int
+	var Config, LastConfig shardctrler.Config
+
+	if d.Decode(&shardsPersist) != nil || d.Decode(&SeqMap) != nil ||
+		d.Decode(&MaxRaftState) != nil || d.Decode(&Config) != nil || d.Decode(&LastConfig) != nil {
+		log.Fatalf("[Server(%v)] Failed to decode snapshot！！！", kv.me)
+	} else {
+		kv.shardsPersist = shardsPersist
+		kv.SeqMap = SeqMap
+		kv.maxraftstate = MaxRaftState
+		kv.Config = Config
+		kv.LastConfig = LastConfig
+
+	}
+}
+func (kv *ShardKV) ifDuplicate(clientId int64, seqId int) bool {
+
+	lastSeqId, exist := kv.SeqMap[clientId]
+	if !exist {
+		return false
+	}
+	return seqId <= lastSeqId
+}
+
+func (kv *ShardKV) getWaitCh(index int) chan OpReply {
+
+	ch, exist := kv.waitChMap[index]
+	if !exist {
+		kv.waitChMap[index] = make(chan OpReply, 1)
+		ch = kv.waitChMap[index]
+	}
+	return ch
+}
+func (kv *ShardKV) upConfigHandler(op Op) {
+	curConfig := kv.Config
+	upConfig := op.UpConfig
+	if curConfig.Num >= upConfig.Num {
+		return
+	}
+	for shard, gid := range upConfig.Shards {
+		if gid == kv.gid && curConfig.Shards[shard] == 0 {
+			// 如果更新的配置的gid与当前的配置的gid一样且分片为0(未分配）
+			kv.shardsPersist[shard].KvMap = make(map[string]string)
+			kv.shardsPersist[shard].ConfigNum = upConfig.Num
+		}
+	}
+	kv.LastConfig = curConfig
+	kv.Config = upConfig
+
+}
+
+func (kv *ShardKV) addShardHandler(op Op) {
+	// this shard is added or it is an outdated command
+	if kv.shardsPersist[op.ShardId].KvMap != nil || op.Shard.ConfigNum < kv.Config.Num {
+		return
+	}
+
+	kv.shardsPersist[op.ShardId] = kv.cloneShard(op.Shard.ConfigNum, op.Shard.KvMap)
+
+	for clientId, seqId := range op.SeqMap {
+		if r, ok := kv.SeqMap[clientId]; !ok || r < seqId {
+			kv.SeqMap[clientId] = seqId
+		}
+	}
+}
+
+func (kv *ShardKV) removeShardHandler(op Op) {
+	if op.SeqId < kv.Config.Num {
+		return
+	}
+	kv.shardsPersist[op.ShardId].KvMap = nil
+	kv.shardsPersist[op.ShardId].ConfigNum = op.SeqId
+}
+func (kv *ShardKV) cloneShard(ConfigNum int, KvMap map[string]string) Shard {
+
+	migrateShard := Shard{
+		KvMap:     make(map[string]string),
+		ConfigNum: ConfigNum,
+	}
+
+	for k, v := range KvMap {
+		migrateShard.KvMap[k] = v
+	}
+
+	return migrateShard
+}
+func (kv *ShardKV) allSent() bool {
+	for shard, gid := range kv.LastConfig.Shards {
+		// 如果当前配置中分片中的信息不匹配，且持久化中的配置号更小，说明还未发送
+		if gid == kv.gid && kv.Config.Shards[shard] != kv.gid && kv.shardsPersist[shard].ConfigNum < kv.Config.Num {
+			return false
+		}
+	}
+	return true
+}
+
+func (kv *ShardKV) allReceived() bool {
+	for shard, gid := range kv.LastConfig.Shards {
+
+		// 判断切片是否都收到了
+		if gid != kv.gid && kv.Config.Shards[shard] == kv.gid && kv.shardsPersist[shard].ConfigNum < kv.Config.Num {
+			return false
+		}
+	}
+	return true
 }

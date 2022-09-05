@@ -1,6 +1,7 @@
 package shardctrler
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -9,6 +10,8 @@ import (
 	"6.824/labrpc"
 	"6.824/raft"
 )
+
+const De = false
 
 type ShardCtrler struct {
 	mu      sync.Mutex
@@ -63,13 +66,16 @@ func (sc *ShardCtrler) Join(args *JoinArgs, reply *JoinReply) {
 	select {
 	case replyop := <-ch:
 		if op.ClientId != replyop.ClientId || op.SeqId != replyop.SeqId {
+			//fmt.Println(op.ClientId, "   ", replyop.ClientId, " ", op.SeqId, "  ", replyop.SeqId)
 			reply.WrongLeader = true
 		} else {
 			reply.Err = OK
-
+			reply.WrongLeader = false
 		}
 	case <-timer.C:
+		//fmt.Println("j超时")
 		reply.WrongLeader = true
+		reply.Err = "TimeOut"
 	}
 }
 func (sc *ShardCtrler) createNextConfig() Config {
@@ -113,7 +119,9 @@ func (sc *ShardCtrler) Leave(args *LeaveArgs, reply *LeaveReply) {
 
 		}
 	case <-timer.C:
+		//.Println("l超时")
 		reply.WrongLeader = true
+		reply.Err = "TimeOut"
 	}
 }
 
@@ -148,7 +156,9 @@ func (sc *ShardCtrler) Move(args *MoveArgs, reply *MoveReply) {
 			reply.Err = OK
 		}
 	case <-timer.C:
+		//fmt.Println("m超时")
 		reply.WrongLeader = true
+		reply.Err = "TimeOut"
 	}
 }
 
@@ -177,7 +187,6 @@ func (sc *ShardCtrler) Query(args *QueryArgs, reply *QueryReply) {
 	defer timer.Stop()
 	select {
 	case replyop := <-ch:
-		//fmt.Println("不ok")
 		if op.ClientId != replyop.ClientId || op.SeqId != replyop.SeqId {
 			reply.WrongLeader = true
 		} else {
@@ -192,8 +201,9 @@ func (sc *ShardCtrler) Query(args *QueryArgs, reply *QueryReply) {
 			sc.mu.Unlock()
 		}
 	case <-timer.C:
-		//fmt.Println("超时")
+		//fmt.Println("q超时")
 		reply.WrongLeader = true
+		reply.Err = "TimeOut"
 	}
 }
 
@@ -315,6 +325,21 @@ func (sc *ShardCtrler) applyMsgHandlerLoop() {
 			if msg.CommandValid {
 				index := msg.CommandIndex
 				op := msg.Command.(Op)
+				if De && op.Optype != "Query" {
+
+					fmt.Println(1, op.Optype)
+				}
+
+				if op.Optype == "Query" {
+					//fmt.Println(213123123)
+					sc.getWaitCh(index) <- op
+					continue
+				}
+				if De {
+					fmt.Println(2, op.Optype)
+					fmt.Println(op.Optype, "    ", op.ClientId, "   ", op.SeqId, "    ", sc.seqMap[op.ClientId])
+				}
+
 				if !sc.ifDuplicate(op.ClientId, op.SeqId) {
 					sc.mu.Lock()
 					sc.seqMap[op.ClientId] = op.SeqId
@@ -358,6 +383,11 @@ func (sc *ShardCtrler) applyMsgHandlerLoop() {
 					}
 
 					sc.mu.Unlock()
+					//fmt.Println(213123123)
+					if De {
+						fmt.Println(op.Optype)
+					}
+
 					sc.getWaitCh(index) <- op
 				}
 			}
