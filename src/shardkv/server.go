@@ -123,6 +123,7 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
 		Key:      args.Key,
 	}
 	err := kv.startCommand(command, GetTimeout)
+	// fmt.Println(err)
 	if err != OK {
 		reply.Err = err
 		return
@@ -299,50 +300,29 @@ func (kv *ShardKV) ConfigDetectedLoop() {
 					go func(servers []*labrpc.ClientEnd, args *SendShardArg) {
 
 						index := 0
-
+						start := time.Now()
 						for {
-							f := 0
 							var reply AddShardReply
-							start := time.Now()
+
 							// 对自己的共识组内进行add
 							ok := servers[index].Call("ShardKV.AddShard", args, &reply)
 
 							// 如果给予切片成功，或者时间超时，这两种情况都需要进行GC掉不属于自己的切片
-							if ok && reply.Err == OK || time.Now().Sub(start) >= 5*time.Second {
-
+							if ok && reply.Err == OK || time.Now().Sub(start) >= 30*time.Second {
 								// 如果成功
-								if ok && reply.Err == OK {
-									if f == 1 {
-										break
-									}
-									kv.mu.Lock()
-									command := Op{
-										OpType:   "RemoveShard",
-										ClientId: int64(kv.gid),
-										SeqId:    kv.Config.Num,
-										ShardId:  args.ShardId,
-									}
-									kv.mu.Unlock()
-									kv.startCommand(command, RemoveShardsTimeout)
-									break
-								} else if f == 0 {
-									f = 1
-									kv.mu.Lock()
-									command := Op{
-										OpType:   "RemoveShard",
-										ClientId: int64(kv.gid),
-										SeqId:    kv.Config.Num,
-										ShardId:  args.ShardId,
-									}
-									kv.mu.Unlock()
-									kv.startCommand(command, RemoveShardsTimeout)
+								kv.mu.Lock()
+								command := Op{
+									OpType:   "RemoveShard",
+									ClientId: int64(kv.gid),
+									SeqId:    kv.Config.Num,
+									ShardId:  args.ShardId,
 								}
-
+								kv.mu.Unlock()
+								kv.startCommand(command, RemoveShardsTimeout)
+								break
 							}
 							index = (index + 1) % len(servers)
-							if index == 0 {
-								time.Sleep(UpConfigLoopInterval)
-							}
+
 						}
 					}(servers, &args)
 				}
@@ -353,34 +333,6 @@ func (kv *ShardKV) ConfigDetectedLoop() {
 		}
 		if !kv.allReceived() {
 			//fmt.Println("rrr")
-			if false {
-				//start = time.Now()
-				sck := kv.sck
-				curConfig = kv.Config
-				newConfig := sck.Query(curConfig.Num + 1)
-				//fmt.Println(newConfig.Num, curConfig.Num)
-				if newConfig.Num != curConfig.Num+1 {
-					if De {
-						fmt.Println(kv.me, newConfig.Num, " ", curConfig.Num)
-					}
-					kv.mu.Unlock()
-					time.Sleep(UpConfigLoopInterval)
-					continue
-				}
-				command := Op{
-					OpType:   "UpConfig",
-					ClientId: int64(kv.gid),
-					SeqId:    newConfig.Num,
-					UpConfig: newConfig,
-				}
-				kv.mu.Unlock()
-				//fmt.Println(newConfig.Num)
-				kv.startCommand(command, UpConfigTimeout)
-				continue
-			}
-			if De {
-				//fmt.Println("noreceived")
-			}
 
 			kv.mu.Unlock()
 			time.Sleep(UpConfigLoopInterval)
@@ -500,9 +452,8 @@ func (kv *ShardKV) applyMsgHandlerLoop() {
 				}
 
 				ch := kv.getWaitCh(msg.CommandIndex)
-
-				ch <- reply
 				kv.mu.Unlock()
+				ch <- reply
 
 			}
 

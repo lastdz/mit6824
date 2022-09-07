@@ -10,7 +10,9 @@ package shardkv
 
 import (
 	"crypto/rand"
+	"fmt"
 	"math/big"
+	randd "math/rand"
 	"time"
 
 	"6.824/labrpc"
@@ -75,12 +77,26 @@ func MakeClerk(ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 //
 func (ck *Clerk) Get(key string) string {
 	ck.SeqId++
+	cnt := 0
+	tim := time.Now()
 	for {
-		//fmt.Println("start get")
+		cnt++
+		if time.Since(tim) > 10*time.Second {
+			fmt.Println(ck.config, ck.ClientId, ck.SeqId, "start get")
+			tim = time.Now()
+		}
 		args := GetArgs{key, ck.SeqId, ck.ClientId}
 		args.Key = key
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
+		if cnt == 5 {
+			f := randd.Int() % len(ck.config.Shards)
+			ck.config = ck.sm.Query(ck.config.Num - f)
+			cnt = 0
+			f = randd.Int() % len(ck.config.Shards)
+			gid = ck.config.Shards[f]
+			// fmt.Println(ck.config.Shards, f, gid)
+		}
 		//fmt.Println(gid)
 		if servers, ok := ck.config.Groups[gid]; ok {
 			// try each server for the shard.
@@ -94,9 +110,6 @@ func (ck *Clerk) Get(key string) string {
 				}
 				if ok && (reply.Err == ErrWrongGroup) {
 					break
-				}
-				if ok && (reply.Err == ErrOverTime) {
-					ck.SeqId++
 				}
 				// ... not ok, or ErrWrongLeader
 			}
@@ -115,8 +128,9 @@ func (ck *Clerk) Get(key string) string {
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	ck.SeqId++
-
+	tim := time.Now()
 	for {
+
 		args := PutAppendArgs{}
 		args.Key = key
 		args.Value = value
@@ -139,12 +153,14 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 				if ok && reply.Err == ErrWrongGroup {
 					break
 				}
-				if ok && (reply.Err == ErrOverTime) {
-					ck.SeqId++
-				}
 				// ... not ok, or ErrWrongLeader
+				if time.Since(tim) > 10*time.Second {
+					fmt.Println(ck.config, ck.ClientId, ck.SeqId, "start ", op, reply.Err)
+
+				}
 			}
 		}
+
 		time.Sleep(100 * time.Millisecond)
 		// ask controler for the latest configuration.
 		//fmt.Println(1)

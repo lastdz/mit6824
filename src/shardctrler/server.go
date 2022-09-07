@@ -176,10 +176,6 @@ func (sc *ShardCtrler) Move(args *MoveArgs, reply *MoveReply) {
 
 func (sc *ShardCtrler) Query(args *QueryArgs, reply *QueryReply) {
 	// Your code here.
-	if sc.rf.Killed() {
-		reply.Err = "ErrKilled"
-		return
-	}
 	_, ifLeader := sc.rf.GetState()
 	if !ifLeader {
 		reply.WrongLeader = true
@@ -217,7 +213,7 @@ func (sc *ShardCtrler) Query(args *QueryArgs, reply *QueryReply) {
 			sc.mu.Unlock()
 		}
 	case <-timer.C:
-		//fmt.Println("q超时")
+		fmt.Println("q超时")
 		reply.WrongLeader = true
 		reply.Err = "TimeOut"
 	}
@@ -341,16 +337,6 @@ func (sc *ShardCtrler) applyMsgHandlerLoop() {
 			if msg.CommandValid {
 				index := msg.CommandIndex
 				op := msg.Command.(Op)
-				if De && op.Optype != "Query" {
-
-					fmt.Println(1, op.Optype)
-				}
-
-				if op.Optype == "Query" {
-					//fmt.Println(213123123)
-					sc.getWaitCh(index) <- op
-					continue
-				}
 				if De {
 					fmt.Println(2, op.Optype)
 					fmt.Println(op.Optype, "    ", op.ClientId, "   ", op.SeqId, "    ", sc.seqMap[op.ClientId])
@@ -370,7 +356,7 @@ func (sc *ShardCtrler) applyMsgHandlerLoop() {
 							cfg.Shards[shard] = gid
 							sc.configs = append(sc.configs, cfg)
 						} else {
-							continue
+							break
 						}
 					case "Join":
 						joinArg := op.Args.(JoinArgs)
@@ -404,8 +390,8 @@ func (sc *ShardCtrler) applyMsgHandlerLoop() {
 						fmt.Println(op.Optype)
 					}
 
-					sc.getWaitCh(index) <- op
 				}
+				sc.getWaitCh(index) <- op
 			}
 		}
 	}
