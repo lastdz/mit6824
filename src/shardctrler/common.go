@@ -27,7 +27,7 @@ type Config struct {
 	Groups map[int][]string // gid -> servers[]
 
 	//asd
-	//
+	////
 	Shards [NShards]int
 }
 

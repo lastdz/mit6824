@@ -295,7 +295,6 @@ func (kv *ShardKV) ConfigDetectedLoop() {
 					for i, name := range serversList {
 						servers[i] = kv.make_end(name)
 					}
-
 					// 开启协程对每个客户端发送切片(这里发送的应是别的组别，自身的共识组需要raft进行状态修改）
 					go func(servers []*labrpc.ClientEnd, args *SendShardArg) {
 
@@ -308,7 +307,7 @@ func (kv *ShardKV) ConfigDetectedLoop() {
 							ok := servers[index].Call("ShardKV.AddShard", args, &reply)
 
 							// 如果给予切片成功，或者时间超时，这两种情况都需要进行GC掉不属于自己的切片
-							if ok && reply.Err == OK || time.Now().Sub(start) >= 30*time.Second {
+							if ok && reply.Err == OK || time.Now().Sub(start) >= 15*time.Second {
 								// 如果成功
 								kv.mu.Lock()
 								command := Op{
@@ -322,13 +321,13 @@ func (kv *ShardKV) ConfigDetectedLoop() {
 								break
 							}
 							index = (index + 1) % len(servers)
-
+							time.Sleep(UpConfigLoopInterval)
 						}
 					}(servers, &args)
 				}
 			}
 			kv.mu.Unlock()
-			time.Sleep(UpConfigLoopInterval)
+			time.Sleep(30 * UpConfigLoopInterval)
 			continue
 		}
 		if !kv.allReceived() {

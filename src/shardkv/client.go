@@ -12,7 +12,6 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
-	randd "math/rand"
 	"time"
 
 	"6.824/labrpc"
@@ -81,22 +80,11 @@ func (ck *Clerk) Get(key string) string {
 	tim := time.Now()
 	for {
 		cnt++
-		if time.Since(tim) > 10*time.Second {
-			fmt.Println(ck.config, ck.ClientId, ck.SeqId, "start get")
-			tim = time.Now()
-		}
+
 		args := GetArgs{key, ck.SeqId, ck.ClientId}
 		args.Key = key
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
-		if cnt == 5 {
-			f := randd.Int() % len(ck.config.Shards)
-			ck.config = ck.sm.Query(ck.config.Num - f)
-			cnt = 0
-			f = randd.Int() % len(ck.config.Shards)
-			gid = ck.config.Shards[f]
-			// fmt.Println(ck.config.Shards, f, gid)
-		}
 		//fmt.Println(gid)
 		if servers, ok := ck.config.Groups[gid]; ok {
 			// try each server for the shard.
@@ -110,6 +98,10 @@ func (ck *Clerk) Get(key string) string {
 				}
 				if ok && (reply.Err == ErrWrongGroup) {
 					break
+				}
+				if time.Since(tim) > 10*time.Second {
+					fmt.Println(ok, ck.config, ck.ClientId, ck.SeqId, "start get", " ", shard, "  ", gid, "  ", reply.Err)
+
 				}
 				// ... not ok, or ErrWrongLeader
 			}
@@ -155,8 +147,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 				}
 				// ... not ok, or ErrWrongLeader
 				if time.Since(tim) > 10*time.Second {
-					fmt.Println(ck.config, ck.ClientId, ck.SeqId, "start ", op, reply.Err)
-
+					fmt.Println(ok, ck.config, ck.ClientId, ck.SeqId, "start ", op, reply.Err)
 				}
 			}
 		}
