@@ -109,11 +109,8 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
 	kv.mu.Lock()
 
 	if kv.Config.Shards[shardId] != kv.gid {
-		fmt.Println(kv.Config)
-		fmt.Println(kv.Config, ErrWrongGroup)
 		reply.Err = ErrWrongGroup
 	} else if kv.shardsPersist[shardId].KvMap == nil {
-		fmt.Println(kv.Config, ShardNotArrived)
 		reply.Err = ShardNotArrived
 	}
 	kv.mu.Unlock()
@@ -272,6 +269,7 @@ func (kv *ShardKV) ConfigDetectedLoop() {
 			continue
 		}
 		kv.mu.Lock()
+		//fmt.Println(kv.gid, "   ", kv.shardsPersist)
 		// 判断是否把不属于自己的部分给分给别人了
 		if !kv.allSent() {
 			//fmt.Println(kv.Config.Num)
@@ -312,20 +310,23 @@ func (kv *ShardKV) ConfigDetectedLoop() {
 							// 对自己的共识组内进行add
 							ok := servers[index].Call("ShardKV.AddShard", args, &reply)
 							// 如果给予切片成功，或者时间超时，这两种情况都需要进行GC掉不属于自己的切片
-							if ok && reply.Err == OK || time.Now().Sub(start) >= 5*time.Second {
-								if time.Now().Sub(start) >= 5*time.Second {
+							if ok && reply.Err == OK || time.Now().Sub(start) >= 2*time.Second {
+
+								// 如果成功
+								if ok && reply.Err == OK {
+									kv.mu.Lock()
+									command := Op{
+										OpType:   "RemoveShard",
+										ClientId: int64(kv.gid),
+										SeqId:    args.RequestId,
+										ShardId:  args.ShardId,
+									}
+									kv.mu.Unlock()
+									kv.startCommand(command, RemoveShardsTimeout)
+								}
+								if time.Now().Sub(start) >= 2*time.Second {
 									break
 								}
-								// 如果成功
-								kv.mu.Lock()
-								command := Op{
-									OpType:   "RemoveShard",
-									ClientId: int64(kv.gid),
-									SeqId:    kv.Config.Num,
-									ShardId:  args.ShardId,
-								}
-								kv.mu.Unlock()
-								kv.startCommand(command, RemoveShardsTimeout)
 								break
 							}
 							index = (index + 1) % len(servers)
@@ -426,8 +427,8 @@ func (kv *ShardKV) applyMsgHandlerLoop() {
 					switch op.OpType {
 
 					case "UpConfig":
-						if De {
-							fmt.Println("done:    ", op.OpType, op.ClientId, "   ", op.SeqId)
+						if true {
+							//fmt.Println("done:    ", op.OpType, op.ClientId, "   ", op.SeqId)
 						}
 						kv.upConfigHandler(op)
 					case "AddShard":

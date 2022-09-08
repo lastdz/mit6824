@@ -18,6 +18,10 @@ import (
 	"6.824/shardctrler"
 )
 
+const (
+	debug = true
+)
+
 //
 // which shard is a key in?
 // please use this function,
@@ -97,8 +101,9 @@ func (ck *Clerk) Get(key string) string {
 					return reply.Value
 				}
 				if time.Since(tim) > 10*time.Second {
-					fmt.Println(ok, ck.config, ck.ClientId, ck.SeqId, servers[si], "start get", " ", shard, "  ", gid, "  ", reply.Err)
-
+					if debug {
+						fmt.Println(ok, ck.config, ck.ClientId, ck.SeqId, servers[si], "start get", " ", shard, "  ", gid, "  ", reply.Err)
+					}
 				}
 				if ok && (reply.Err == ErrWrongGroup) {
 					break
@@ -148,7 +153,9 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 				}
 				// ... not ok, or ErrWrongLeader
 				if time.Since(tim) > 10*time.Second {
-					fmt.Println(ok, ck.config, ck.ClientId, ck.SeqId, "start ", op, reply.Err)
+					if debug {
+						fmt.Println(ok, ck.config, ck.ClientId, ck.SeqId, "start ", op, reply.Err)
+					}
 				}
 			}
 		}
