@@ -928,7 +928,7 @@ func TestChallenge2Partial(t *testing.T) {
 	// 101 can get old shards from 102, but not from 100. 101 should start
 	// serving shards that used to belong to 102 as soon as possible
 	cfg.leavem([]int{0, 2})
-	fmt.Println("has leave")
+	// fmt.Println("has leave")
 	// Give the implementation some time to start reconfiguration
 	// And to migrate 102 -> 101
 	<-time.After(1 * time.Second)
@@ -939,9 +939,11 @@ func TestChallenge2Partial(t *testing.T) {
 		if owned[shard] {
 
 			check(t, ck, ka[i], va[i])
+			// fmt.Println("c")
 			ck.Put(ka[i], va[i]+"-2")
+			// fmt.Println("p")
 			check(t, ck, ka[i], va[i]+"-2")
-			fmt.Println(111)
+			// fmt.Println("c")
 		}
 	}
 

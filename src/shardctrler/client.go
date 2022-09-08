@@ -69,12 +69,12 @@ func (ck *Clerk) Join(servers map[int][]string) {
 	ck.seqId++
 
 	// Your code here.
-	tim := time.Now()
+	// tim := time.Now()
 	for {
-		if time.Since(tim) > 10*time.Second {
-			fmt.Println(ck.clientId, ck.seqId, "start join")
-			tim = time.Now()
-		}
+		// if time.Since(tim) > 10*time.Second {
+		// 	fmt.Println(ck.clientId, ck.seqId, "start join")
+		// 	tim = time.Now()
+		// }
 		// try each known server.
 		args := &JoinArgs{Servers: servers, ClientId: ck.clientId, SeqId: ck.seqId}
 		reply := &JoinReply{}

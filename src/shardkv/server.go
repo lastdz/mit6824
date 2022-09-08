@@ -107,9 +107,13 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
 	shardId := key2shard(args.Key)
 	kv.mu.Lock()
+
 	if kv.Config.Shards[shardId] != kv.gid {
+		fmt.Println(kv.Config)
+		fmt.Println(kv.Config, ErrWrongGroup)
 		reply.Err = ErrWrongGroup
 	} else if kv.shardsPersist[shardId].KvMap == nil {
+		fmt.Println(kv.Config, ShardNotArrived)
 		reply.Err = ShardNotArrived
 	}
 	kv.mu.Unlock()
@@ -128,8 +132,9 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
 		reply.Err = err
 		return
 	}
+	// fmt.Println(111)
 	kv.mu.Lock()
-
+	// fmt.Println(222)
 	if kv.Config.Shards[shardId] != kv.gid {
 		reply.Err = ErrWrongGroup
 	} else if kv.shardsPersist[shardId].KvMap == nil {
@@ -296,6 +301,7 @@ func (kv *ShardKV) ConfigDetectedLoop() {
 						servers[i] = kv.make_end(name)
 					}
 					// 开启协程对每个客户端发送切片(这里发送的应是别的组别，自身的共识组需要raft进行状态修改）
+					// fmt.Println("开始addshard", kv.gid, "to", kv.Config.Shards[shardId])
 					go func(servers []*labrpc.ClientEnd, args *SendShardArg) {
 
 						index := 0
@@ -305,9 +311,11 @@ func (kv *ShardKV) ConfigDetectedLoop() {
 
 							// 对自己的共识组内进行add
 							ok := servers[index].Call("ShardKV.AddShard", args, &reply)
-
 							// 如果给予切片成功，或者时间超时，这两种情况都需要进行GC掉不属于自己的切片
-							if ok && reply.Err == OK || time.Now().Sub(start) >= 15*time.Second {
+							if ok && reply.Err == OK || time.Now().Sub(start) >= 5*time.Second {
+								if time.Now().Sub(start) >= 5*time.Second {
+									break
+								}
 								// 如果成功
 								kv.mu.Lock()
 								command := Op{
@@ -327,7 +335,7 @@ func (kv *ShardKV) ConfigDetectedLoop() {
 				}
 			}
 			kv.mu.Unlock()
-			time.Sleep(30 * UpConfigLoopInterval)
+			time.Sleep(3 * UpConfigLoopInterval)
 			continue
 		}
 		if !kv.allReceived() {

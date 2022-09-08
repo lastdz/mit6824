@@ -96,13 +96,14 @@ func (ck *Clerk) Get(key string) string {
 					//fmt.Println("return")
 					return reply.Value
 				}
+				if time.Since(tim) > 10*time.Second {
+					fmt.Println(ok, ck.config, ck.ClientId, ck.SeqId, servers[si], "start get", " ", shard, "  ", gid, "  ", reply.Err)
+
+				}
 				if ok && (reply.Err == ErrWrongGroup) {
 					break
 				}
-				if time.Since(tim) > 10*time.Second {
-					fmt.Println(ok, ck.config, ck.ClientId, ck.SeqId, "start get", " ", shard, "  ", gid, "  ", reply.Err)
 
-				}
 				// ... not ok, or ErrWrongLeader
 			}
 		}

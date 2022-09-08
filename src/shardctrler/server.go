@@ -213,7 +213,7 @@ func (sc *ShardCtrler) Query(args *QueryArgs, reply *QueryReply) {
 			sc.mu.Unlock()
 		}
 	case <-timer.C:
-		fmt.Println("q超时")
+		//fmt.Println("q超时")
 		reply.WrongLeader = true
 		reply.Err = "TimeOut"
 	}
@@ -365,23 +365,23 @@ func (sc *ShardCtrler) applyMsgHandlerLoop() {
 							tmp = append(tmp, gid)
 						}
 						sort.Ints(tmp)
+						cfg := sc.createNextConfig()
 						for _, gid := range tmp {
 							servers := joinArg.Servers[gid]
 							newServers := make([]string, len(servers))
 							copy(newServers, servers)
-							cfg := sc.createNextConfig()
 							cfg.Groups[gid] = newServers
 							sc.rebalance(&cfg, "Join", gid)
-							sc.configs = append(sc.configs, cfg)
 						}
+						sc.configs = append(sc.configs, cfg)
 					case "Leave":
 						LeaveArg := op.Args.(LeaveArgs)
+						cfg := sc.createNextConfig()
 						for _, gid := range LeaveArg.GIDs {
-							cfg := sc.createNextConfig()
 							delete(cfg.Groups, gid)
 							sc.rebalance(&cfg, "Leave", gid)
-							sc.configs = append(sc.configs, cfg)
 						}
+						sc.configs = append(sc.configs, cfg)
 					}
 
 					sc.mu.Unlock()
