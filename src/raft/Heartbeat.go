@@ -100,10 +100,8 @@ func (rf *Raft) SendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 								//fmt.Println(server, "changeed", "at term", rf.currentTerm)
 								//fmt.Println(rf.matchindex[server])
 								//fmt.Println(len(rf.log))
-								if rf.currentTerm == args.Term {
-									rf.nextindex[server] = max(limit, rf.nextindex[server])
-									rf.matchindex[server] = limit
-								}
+								rf.nextindex[server] = max(limit, rf.nextindex[server])
+								rf.matchindex[server] = max(limit-1, rf.matchindex[server])
 
 								//fmt.Println(rf.matchindex[server])
 							}
