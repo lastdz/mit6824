@@ -111,6 +111,7 @@ func (rf *Raft) GetState() (int, bool) {
 	defer rf.mu.Unlock()
 	term = rf.currentTerm
 	isleader = rf.state == Leader
+	//fmt.Println(rf.me, " ", term, " ", rf.state)
 	return term, isleader
 }
 
@@ -218,6 +219,7 @@ type RequestVoteArgs struct {
 
 	LastLogIndex int
 	LastLogTerm  int
+	Ifprevote    bool
 }
 
 //
@@ -238,6 +240,18 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	reply.Term = rf.currentTerm
+	if args.Ifprevote {
+		if rf.currentTerm > args.Term {
+			reply.VoteGranted = false
+			return
+		}
+		if rf.getlastTerm() > args.LastLogTerm || rf.getlastTerm() == args.LastLogTerm && (rf.getlastindex() > args.LastLogIndex) {
+			reply.VoteGranted = false
+			return
+		}
+		reply.VoteGranted = true
+		return
+	}
 	if rf.currentTerm > args.Term {
 		reply.VoteGranted = false
 		return
@@ -402,7 +416,12 @@ func (rf *Raft) ticker() {
 			//fmt.Println(rf.me, "跟随者在纪元:", rf.currentTerm, "日志状态:", rf.log)
 			if time.Now().After(rf.timeout) {
 				rf.mu.Unlock()
-				rf.Xuanju()
+				if rf.prevote() {
+					//fmt.Println("start")
+					rf.Xuanju()
+					//fmt.Println("end")
+				}
+				rf.persist()
 			} else {
 				rf.mu.Unlock()
 			}
