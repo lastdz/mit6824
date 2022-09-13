@@ -7,7 +7,7 @@ import (
 func (rf *Raft) prevote() bool {
 	rf.mu.Lock()
 	me := rf.me
-	currentTerm := rf.currentTerm
+	currentTerm := rf.currentTerm + 1
 	cnt := 1
 	flag := 0
 	rf.mu.Unlock()
@@ -28,10 +28,6 @@ func (rf *Raft) prevote() bool {
 				rf.mu.Unlock()
 				return
 			}
-
-			if reply.Term > rf.currentTerm {
-				rf.Refresh(reply.Term)
-			}
 			if reply.VoteGranted == true {
 				//fmt.Println(me, "receive xuanju from", a, "term :", currentTerm)
 				cnt++
@@ -48,7 +44,7 @@ func (rf *Raft) prevote() bool {
 	for {
 		rf.mu.Lock()
 		//fmt.Println(cnt, "  ", flag, " ", currentTerm, " ", rf.currentTerm)
-		if flag == 1 && currentTerm == rf.currentTerm {
+		if flag == 1 && currentTerm == rf.currentTerm+1 {
 			rf.mu.Unlock()
 			return true
 		}

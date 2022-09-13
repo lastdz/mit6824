@@ -245,6 +245,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			reply.VoteGranted = false
 			return
 		}
+		//日志不够新
 		if rf.getlastTerm() > args.LastLogTerm || rf.getlastTerm() == args.LastLogTerm && (rf.getlastindex() > args.LastLogIndex) {
 			reply.VoteGranted = false
 			return
