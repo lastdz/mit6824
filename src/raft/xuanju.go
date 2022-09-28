@@ -64,10 +64,10 @@ func (rf *Raft) Xuanju() {
 	currentTerm := rf.currentTerm
 	me := rf.me
 	cnt := 1
-	flag := 0
 	rf.votedFor = rf.me
 	rf.state = Candidate
 	rf.persist()
+	newch := make(chan int, 1)
 	rf.mu.Unlock()
 	for i := 0; i < len(rf.peers); i++ {
 		if i == me {
@@ -94,19 +94,21 @@ func (rf *Raft) Xuanju() {
 				//fmt.Println(me, "receive xuanju from", a, "term :", currentTerm)
 				cnt++
 				if cnt > len(rf.peers)/2 {
-					flag = 1
+
+					select {
+					case newch <- 1:
+					default:
+					}
 				}
 			}
 			rf.mu.Unlock()
 		}(i)
 	}
 
-	ran, _ := time.ParseDuration("100ms")
-	f := time.Now().Add(ran)
-	for {
+	select {
+	case <-newch:
 		rf.mu.Lock()
-		//fmt.Println("xuanju", cnt, "  ", flag, " ", currentTerm, " ", rf.currentTerm)
-		if flag == 1 && currentTerm == rf.currentTerm {
+		if currentTerm == rf.currentTerm {
 			//fmt.Println(rf.me, "become leader term:", rf.currentTerm)
 			//fmt.Println(rf.me, "变成领导者在纪元:", rf.currentTerm, "日志状态:", rf.log)
 			rf.state = Leader
@@ -120,11 +122,7 @@ func (rf *Raft) Xuanju() {
 			rf.mu.Unlock()
 			return
 		}
-		if time.Now().After(f) {
-			rf.mu.Unlock()
-			return
-		}
-		rf.mu.Unlock()
-		time.Sleep(time.Second / 100)
+	case <-time.After(100 * time.Millisecond):
+		return
 	}
 }
